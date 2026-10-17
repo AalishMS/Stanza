@@ -134,7 +134,7 @@ terminal or home screen (a session already on screen is opened a second time bes
 a grid with 1 px `--border` gaps, no boxes or gutters. Each pane has a 26 px header strip on the terminal background:
 status dot, title (12 px, `--faint`), and a hover-only ghost `×` that closes that pane's session. The focused pane is marked only by its title going `--foreground` and the other panes' terminal text (and scrollbar) dimmed to 40 % opacity:
 no outline, no other color, no background change. Panes clip their content so nothing reaches the status bar. A stacked split ("New session below") is the same grid transposed. Dividers are 4 px invisible handles that take the `.rz` hover tint. When a pane
-would drop under ~100 columns the right sidebar hides itself and returns when there is room (see CLAUDE.md).
+would drop under ~100 columns the right sidebar hides itself and returns when there is room (see AGENTS.md).
 
 ### Split group (sidebar)
 Like a browser tab group: one soft card (`rounded-lg`, 3 px inset) with a 1 px inset ring of the group's color `--g`
@@ -356,7 +356,7 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 
 ### Scrollbars
 - Thin (8 px), thumb `--border` color, `rounded-full`, hover `--input`. The terminal uses its own `.vbar` (see
-  CLAUDE.md); same colors.
+  AGENTS.md); same colors.
 
 ### Icons
 - Lucide-style (Feather-compatible) inline SVG paths in `ICONS` (renderer.js), 24-unit viewBox, stroke 2, round
