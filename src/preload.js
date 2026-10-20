@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('api', {
 
   gitStatus: (paths) => ipcRenderer.invoke('git:status', paths),
   listSessions: (paths) => ipcRenderer.invoke('sessions:list', paths),
+  liveSessions: (tabIds) => ipcRenderer.invoke('sessions:live', tabIds),
   sessionInfo: (cwd, sessionId, tabId) => ipcRenderer.invoke('session:info', cwd, sessionId, tabId),
   mcpList: (cwd) => ipcRenderer.invoke('mcp:list', cwd),
   definedAgents: (cwd) => ipcRenderer.invoke('agents:defined', cwd),

@@ -218,6 +218,26 @@ test('matchSessions: a fork may write its transcript as it starts, before anythi
   assert.deepEqual(ui.matchSessions([fork], { P: [{ id: 'other', birth: 60000, mtime: 61000 }] }, new Set()), []);
 });
 
+test('matchSessions: Claude\'s own record wins, so /resume to an old transcript is followed', () => {
+  // /resume keeps writing to the resumed session's file, born long before the tab: no birth rule can match it
+  const sessionsBy = { P: [{ id: 'old', birth: 100, mtime: 9000 }, { id: 'cur', birth: 2000, mtime: 3000 }] };
+  const tab = { id: 'a', project: 'P', sessionId: 'cur', running: true, working: true, startedAt: 1000, enters: [8000] };
+  assert.deepEqual(ui.matchSessions([{ ...tab, live: 'old' }], sessionsBy, new Set()),
+    [{ id: 'a', sessionId: 'old', followed: true }]);
+  // a "New session" tab that resumed before its first prompt, and a retired id resumed again
+  assert.deepEqual(ui.matchSessions([{ ...tab, sessionId: null, live: 'old' }], sessionsBy, new Set(['old'])),
+    [{ id: 'a', sessionId: 'old', followed: false }]);
+  // no transcript for the live id yet (fresh tab, or just after /clear): wait, and don't guess for this tab either
+  assert.deepEqual(ui.matchSessions([{ ...tab, sessionId: null, live: 'new', enters: [1900] }], sessionsBy, new Set()), []);
+  // already on it, or exited
+  assert.deepEqual(ui.matchSessions([{ ...tab, live: 'cur' }], sessionsBy, new Set()), []);
+  assert.deepEqual(ui.matchSessions([{ ...tab, live: 'old', running: false }], sessionsBy, new Set()), []);
+  // a tab without a record never takes another tab's live session by guessing
+  const fresh = { id: 'b', project: 'P', sessionId: null, running: true, working: false, startedAt: 1900, enters: [1990] };
+  assert.deepEqual(ui.matchSessions([fresh, { ...tab, sessionId: null, live: 'cur' }], sessionsBy, new Set()),
+    [{ id: 'a', sessionId: 'cur', followed: false }]);
+});
+
 test('matchSessions: a retired transcript (closed split pane) is never adopted', () => {
   // A idles since 1000; B (closed) wrote s-b from 5000 on; Claude's exit bumped it last
   const a = { id: 'a', project: 'P', sessionId: 's-a', running: true, working: false, startedAt: 0, enters: [900] };

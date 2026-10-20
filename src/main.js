@@ -8,7 +8,7 @@ const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
   parseAgentFile, parseMcpList, remapSplits, edgeHold, summarizeStats,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
@@ -849,6 +849,56 @@ function readSettingsSync() {
   } catch {
     return null;
   }
+}
+
+// ~/.claude/sessions/<pid>.json: Claude Code's record of each running interactive Claude, with the session it is on now.
+// It changes on /resume and /clear, and /resume keeps writing to the old session's transcript, so no new file shows that
+// switch (undocumented, seen on v2.1.304; without it the renderer falls back to guessing, matchSessions in lib/ui.js).
+const LIVE_DIR = path.join(os.homedir(), '.claude', 'sessions');
+const LIVE_TRIES = 15; // a tab whose record never shows stops costing console scans after this many
+
+async function readLiveRecords() {
+  let names;
+  try {
+    names = (await fs.promises.readdir(LIVE_DIR)).filter((n) => /^\d+\.json$/.test(n));
+  } catch {
+    return [];
+  }
+  return (await Promise.all(names.map((n) => readJson(path.join(LIVE_DIR, n))))).filter(Boolean);
+}
+
+// The processes on a tab's console (cmd.exe, Claude, its tools). node-pty forks a helper for it, so it runs only until
+// the tab's Claude is found. Private API, like endSession's use of it.
+function consolePids(s) {
+  const agent = s.pty._agent;
+  if (typeof agent?._getConsoleProcessList !== 'function') return Promise.resolve([]);
+  return agent._getConsoleProcessList.call(agent).catch(() => []);
+}
+
+// tab id -> the session its Claude is on now. Its Claude's pid is found once (it stays the same across /resume and
+// /clear), looked for only while a record not older than the tab and owned by no other tab exists; then each call reads
+// one small file. macOS spawns claude directly, so the pty's pid is Claude's.
+async function liveSessions(ids) {
+  const out = {};
+  const taken = new Set([...sessions.values()].map((s) => s.claudePid).filter(Boolean));
+  let records = null;
+  for (const id of Array.isArray(ids) ? ids : []) {
+    const s = sessions.get(id);
+    if (!s || s.kind !== 'claude' || s.ending) continue;
+    if (!s.claudePid && (s.liveTries || 0) < LIVE_TRIES) {
+      if (!records) records = await readLiveRecords();
+      const fresh = records.filter((r) => !taken.has(r.pid) && (r.startedAt || 0) >= s.startedAt - 5000);
+      if (fresh.length) {
+        s.liveTries = (s.liveTries || 0) + 1;
+        const pid = liveRecord(fresh, IS_MAC ? [s.pty.pid] : await consolePids(s), taken);
+        if (pid) { s.claudePid = pid; taken.add(pid); }
+      }
+    }
+    if (!s.claudePid) continue;
+    const r = await readJson(path.join(LIVE_DIR, `${s.claudePid}.json`));
+    if (r?.pid === s.claudePid && typeof r.sessionId === 'string' && UUID_RE.test(r.sessionId)) out[id] = r.sessionId;
+  }
+  return out;
 }
 
 // `tabId`'s settings as its Claude started, not today's file: another tab's /model or /effort changes the file, not this
@@ -1789,6 +1839,7 @@ function registerIpc() {
     const entries = await Promise.all((paths || []).map(async (p) => [p, await listSessions(p)]));
     return Object.fromEntries(entries);
   });
+  ipcMain.handle('sessions:live', (_e, ids) => liveSessions(ids));
   ipcMain.handle('session:info', (_e, cwd, sessionId, tabId) => sessionInfo(cwd, sessionId, tabId));
   ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
   ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));

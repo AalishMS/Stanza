@@ -152,6 +152,9 @@ site/            the product page (static, open index.html or serve the folder; 
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
+  - Live session (`liveSessions`): claude is spawned directly, so the pty's pid is Claude's and is looked up in
+    `~/.claude/sessions` without the console scan (an npm `claude` script execs node, same pid). If it isn't found the tab
+    falls back to `matchSessions`, so `/resume` inside a tab isn't followed there. Untested on a Mac.
   - Markdown tabs (right sidebar): no Mac branch. `fs.watch` on the file's folder; macOS may report no file name, then
     every open file in that folder is re-read. "Show in Finder" via `FILES_APP`, Open in VS Code via `openFileAt`.
     The editor: Cmd+S saves now (`mod(e)`), Cmd+C/V/Z come from the Edit menu roles.
@@ -315,8 +318,8 @@ site/            the product page (static, open index.html or serve the folder; 
     replies (1 MB tail when the 64 KB one has none, else the last one seen), before its first reply the Agent call's
     `model` from `.meta.json` (`requested`) or the definition's; never the session's (only an idle `inherit` definition shows that). Clicking a row (a running run's row shows only that run; a type's row lists each run with its own model) opens `agentDialog` (read-only popup in
     `#modal`, Esc / backdrop / × close): the definition's prompt (`agents:prompt`, body after the frontmatter) and the prompt each run of
-    that type was given (first line of its `agent-*.jsonl`), each with its own Context bar (a subagent has a separate window; last reply's usage in its transcript, same assumed 200k/1M rule). `assignSessions` also re-points a running tab at a newer unclaimed
-    transcript (`/clear` and `/resume` start a new session file in the same tab), otherwise the sidebar reads the old session's `subagents/`.
+    that type was given (first line of its `agent-*.jsonl`), each with its own Context bar (a subagent has a separate window; last reply's usage in its transcript, same assumed 200k/1M rule). `assignSessions` also re-points a running tab when
+    `/clear` or `/resume` switches its session (see "Sessions and usage"), otherwise the sidebar reads the old session's `subagents/`.
   - Images: the active session's pasted images (label `#n` from the line's `imagePasteIds`, else block order 1..n; a
     `[Attached image ... is saved at: <path>]` text gives the file) and images from the Read tool (the path comes from the earlier
     `tool_use`, kept in a `pending` map capped at 50). MCP/browser screenshots and subagent transcripts are not shown. Main
@@ -382,7 +385,16 @@ site/            the product page (static, open index.html or serve the folder; 
   using the token in `~/.claude/.credentials.json`, cached 2 min in main, never written; the token lasts hours and only Claude
   Code refreshes it, so with no session running it expires: `refreshLogin` then runs `claude mcp list` in the home folder
   (it refreshes the token; `claude auth status` does not, tested on v2.1.296), at most once per 10 min, also on a 401; a failure blocks requests for its `Retry-After` (429 default 5 min, max 15) and the last good numbers are served as `stale`, because retrying a 429 keeps the limit from clearing), the update button
-  (see "Update"), and tab state. Fresh and forked tabs are matched to their transcript heuristically (`assignSessions` -> `matchSessions` in lib/ui.js).
+  (see "Update"), and tab state. Which transcript a tab shows: Claude Code keeps `~/.claude/sessions/<pid>.json` per
+  running interactive Claude (undocumented; seen on v2.1.304) with the `sessionId` it is on now, updated at once by
+  `/resume` and `/clear`. `/resume` keeps writing to the resumed session's old file, so no new file ever shows that switch
+  (the row, pane header and split group kept the old title). Main's `liveSessions` (`sessions:live`, called with
+  `pollSessions`) finds each Claude tab's pid once (it survives `/resume` and `/clear`): Windows = the record whose pid is
+  on the tab's console (`consolePids`, node-pty's private `_getConsoleProcessList`, a forked helper, so it runs only while
+  a record no older than the tab and owned by no tab exists, at most `LIVE_TRIES` times; the oldest interactive record
+  wins over a nested `claude`, `liveRecord` in lib/parse.js), then reads that one file per poll. The renderer keeps it in
+  `liveBy`; `matchSessions` gives a tab its live id once that transcript is listed (a fresh tab stays "New session" until
+  then) and leaves it out of the guessing. Tabs without a record (older Claude, a failed lookup) are matched heuristically:
   Claude creates a transcript when a prompt is sent (birth ~150 ms after the Enter, measured), so each free file goes to the
   running tab whose Enter (`tab.enters`, the last 100) came last before its birth: a tab without one yet (up to 60 s before;
   a fork also may own a file born within 15 s of its start, in case it writes its copy at once) or one whose transcript had

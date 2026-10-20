@@ -221,6 +221,20 @@ function transcriptCwd(text) {
   return null;
 }
 
+/**
+ * Which ~/.claude/sessions/<pid>.json record is a tab's own Claude. `records`: the parsed files; `pids`: the tab's
+ * processes (Windows: its console's, macOS: the pty pid); `taken`: pids other tabs already own. A Claude started from
+ * the tab's own tools (a nested `claude`) is also on that console but started later, so the oldest interactive one wins.
+ * Returns its pid, or null (Claude hasn't written its record yet, or a version without them).
+ */
+function liveRecord(records, pids, taken) {
+  const mine = new Set(pids);
+  const hits = (records || []).filter((r) => r && Number.isInteger(r.pid) && mine.has(r.pid) && !taken.has(r.pid)
+    && (r.kind == null || r.kind === 'interactive'));
+  if (!hits.length) return null;
+  return hits.reduce((a, b) => ((b.startedAt || 0) < (a.startedAt || 0) ? b : a)).pid;
+}
+
 /** Effort for a model from settings: modelSettings by id ("Opus 5.5" -> claude-opus-5-5), else by family, else global. */
 function defaultEffort(settings, model) {
   const per = settings?.modelSettings || {};
@@ -467,7 +481,7 @@ function summarizeStats(raw, today) {
 module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, parseMsysPs, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, modelFamily, withLongContext, parseModelEffort,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, defaultEffort, modelFamily, withLongContext, parseModelEffort,
   agentDone, lastModel, agentPrompt, parseAgentFile,
   parseMcpList,
   remapSplits,

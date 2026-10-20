@@ -190,9 +190,13 @@
 
   /**
    * Which transcript each Claude tab shows. `tabs`: Claude tabs in tab order, `{ id, project, sessionId, fork, running,
-   * working, startedAt, enters }` (`enters` = times an Enter was typed in it); `sessionsBy`: project path ->
-   * `[{ id, birth, mtime }]`; `retired`: ids a tab let go of (closed, restarted as new, left by /clear), never handed
-   * to another tab. Returns `[{ id, sessionId, followed }]` for the tabs whose transcript changes.
+   * working, startedAt, enters, live }` (`enters` = times an Enter was typed in it; `live` = the session its Claude
+   * says it is on, from ~/.claude/sessions, else null); `sessionsBy`: project path -> `[{ id, birth, mtime }]`;
+   * `retired`: ids a tab let go of (closed, restarted as new, left by /clear), never handed to another tab. Returns
+   * `[{ id, sessionId, followed }]` for the tabs whose transcript changes.
+   * A tab with a `live` id takes it as soon as its transcript is listed (exact; the only way to follow /resume, which
+   * keeps writing to the old session's file) and is left out of the guessing below, which covers Claude versions
+   * without that record.
    * Claude creates a transcript when a prompt is sent (a session's first, or the first after /clear), so an Enter was
    * typed in its tab just before the file was born: each free file goes to the tab whose Enter came last before it.
    * Candidates: fresh and forked tabs still without a transcript (an Enter up to 60 s before, so a prompt typed while
@@ -203,19 +207,24 @@
    */
   function matchSessions(tabs, sessionsBy, retired) {
     const claimed = new Set(retired);
-    for (const t of tabs) if (t.sessionId) claimed.add(t.sessionId);
+    for (const t of tabs) for (const id of [t.sessionId, t.live]) if (id) claimed.add(id);
     const out = [];
     const changed = new Set();
+    for (const t of tabs) {
+      if (!t.running || !t.live || t.live === t.sessionId) continue;
+      if (!(sessionsBy[t.project] || []).some((s) => s.id === t.live)) continue; // no transcript yet: wait
+      out.push({ id: t.id, sessionId: t.live, followed: !!t.sessionId });
+    }
     // the last Enter typed in `t` (since it started) up to `ms` before file `s` was born
     const lastEnter = (t, s, ms) => Math.max(-Infinity,
       ...(t.enters || []).filter((e) => e >= t.startedAt && e >= s.birth - ms && e <= s.birth + 250));
-    const live = tabs.filter((t) => t.running).sort((a, b) => a.startedAt - b.startedAt);
-    for (const project of new Set(live.map((t) => t.project))) {
+    const guessed = tabs.filter((t) => t.running && !t.live).sort((a, b) => a.startedAt - b.startedAt);
+    for (const project of new Set(guessed.map((t) => t.project))) {
       const list = sessionsBy[project] || [];
       for (const s of list.filter((x) => !claimed.has(x.id)).sort((a, b) => a.birth - b.birth)) {
         let best = null;
         let bestAt = -Infinity;
-        for (const t of live) {
+        for (const t of guessed) {
           if (t.project !== project || changed.has(t.id)) continue;
           let at;
           if (!t.sessionId) {

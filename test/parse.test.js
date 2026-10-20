@@ -229,6 +229,27 @@ test('transcriptCwd: first cwd field, skipping text that only mentions cwd and a
   assert.equal(p.transcriptCwd(''), null);
 });
 
+test('liveRecord: the oldest interactive Claude on the tab\'s console, not another tab\'s', () => {
+  // ~/.claude/sessions/<pid>.json as written by Claude Code v2.1.304 (trimmed)
+  const rec = (pid, sessionId, startedAt, kind = 'interactive') => ({
+    pid, sessionId, cwd: 'E:\\pet_project\\Claude Terminal', startedAt, version: '2.1.304', kind, entrypoint: 'cli',
+    name: 'fit-home-screen-window', status: 'idle',
+  });
+  const records = [
+    rec(9536, 'f5440196-56f8-4a0a-87a7-4070b1d6c776', 1792484363741),
+    rec(1832, '4539fd26-24fe-4fa1-8449-7f5d4cf450a7', 1792509700881),
+    rec(4492, '46485345-2579-4cc9-bcb8-04cb43a48ad6', 1792509844082), // a nested claude started from tab 1832's tools
+    rec(7777, 'b3df5493-0bf1-4a37-82ab-f9fa66329c68', 1792509600000, 'sdk'),
+  ];
+  // Windows: the console holds cmd.exe (24544), Claude and whatever it started
+  assert.equal(p.liveRecord(records, [24544, 1832, 4492, 7777], new Set()), 1832);
+  assert.equal(p.liveRecord(records, [24544, 1832, 4492], new Set([1832])), 4492);
+  assert.equal(p.liveRecord(records, [24544], new Set()), null); // Claude hasn't written its record yet
+  assert.equal(p.liveRecord([{ pid: 'x' }, null], [24544], new Set()), null);
+  // macOS: the pty pid is Claude's
+  assert.equal(p.liveRecord(records, [9536], new Set()), 9536);
+});
+
 test('defaultEffort: by model id, then by unique family, then global', () => {
   const settings = {
     effortLevel: 'medium',

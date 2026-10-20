@@ -1751,17 +1751,21 @@ const tabOfSession = (id) => [...tabs.values()].find((t) => t.sessionId === id);
  */
 const retired = new Set();
 
+/** Tab id -> the session its Claude says it is on (main's `sessions:live`, from ~/.claude/sessions), refreshed by pollSessions. */
+let liveBy = {};
+
 /**
- * Tabs we started fresh (or forked) don't know their transcript yet: match each to a session of its project whose file
- * was created after the tab started. /clear (and /resume inside a tab) switches to a new transcript: follow it, or the
- * right sidebar keeps reading the old session's subagents. Rules in matchSessions (lib/ui.js). Best effort: a Claude
- * run in an outside terminal in the same folder could be mistaken for ours.
+ * Tabs we started fresh (or forked) don't know their transcript yet, and /clear or /resume inside a tab switches it
+ * (/resume keeps writing to the old session's file): follow it, or the row, pane header and right sidebar keep showing
+ * the old session. Claude's own record (`liveBy`) decides when there is one; otherwise matchSessions (lib/ui.js)
+ * guesses from file births and Enters, where a Claude run in an outside terminal in the same folder could be mistaken
+ * for ours.
  */
 function assignSessions() {
   const claude = [...tabs.values()].filter((t) => t.kind === 'claude');
   const changes = matchSessions(claude.map((t) => ({
     id: t.id, project: t.project.path, sessionId: t.sessionId, fork: t.fork, running: t.status === 'running',
-    working: isWorking(t), startedAt: t.startedAt, enters: t.enters,
+    working: isWorking(t), startedAt: t.startedAt, enters: t.enters, live: liveBy[t.id] || null,
   })), sessionsBy, retired);
   for (const c of changes) {
     const t = tabs.get(c.id);
@@ -4034,7 +4038,9 @@ async function pollSessions(all = true) {
   if (sessionsBusy || document.hidden || !paths.length) return;
   sessionsBusy = true;
   try {
-    const res = await api.listSessions(paths);
+    const claudeIds = [...tabs.values()].filter((t) => t.kind === 'claude' && t.status === 'running').map((t) => t.id);
+    const [res, live] = await Promise.all([api.listSessions(paths), api.liveSessions(claudeIds)]);
+    liveBy = live;
     const next = all ? res : { ...sessionsBy, ...res };
     if (JSON.stringify(next) !== JSON.stringify(sessionsBy)) { sessionsBy = next; sessionsVer++; }
     assignSessions();
