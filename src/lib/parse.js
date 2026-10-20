@@ -398,6 +398,72 @@ function edgeHold(p, b, slack, top = 0, side = 'left', bottom = 0) {
   return beside && p.y >= b.y + top && p.y < b.y + b.height - bottom ? 'hold' : 'away';
 }
 
+// ------------------------------------------------------------- home stats ----
+
+/** "claude-opus-5-5", "anthropic/claude-opus-4-8-aws", "MaaS_Cl_Opus_4.8_..." -> "Opus 5.5" / "Opus 4.8"; null if unknown. */
+function modelName(id) {
+  const m = /(opus|sonnet|haiku|fable|mythos)[-_ ]?(\d+)(?:[-_.](\d{1,2})(?!\d))?/i.exec(String(id || ''));
+  if (!m) return null;
+  return `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}${m[3] ? `.${m[3]}` : ''}`;
+}
+
+/**
+ * Claude Code's own /stats cache (`~/.claude/stats-cache.json`, rewritten when /stats runs) -> what the home screen
+ * shows. `today` = local "YYYY-MM-DD". Streaks count days with messages; the current one may end today or yesterday
+ * (or on the cache's own date: a stale cache doesn't break it). Unknown shapes give null, never a throw.
+ */
+function summarizeStats(raw, today) {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.dailyActivity)) return null;
+  const num = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
+  const days = raw.dailyActivity
+    .filter((d) => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date))
+    .map((d) => ({ date: d.date, messages: num(d.messageCount), sessions: num(d.sessionCount), tools: num(d.toolCallCount) }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const byModel = {};
+  let tokens = 0;
+  for (const d of Array.isArray(raw.dailyModelTokens) ? raw.dailyModelTokens : []) {
+    for (const [id, n] of Object.entries(d?.tokensByModel || {})) {
+      tokens += num(n);
+      const name = modelName(id);
+      if (name) byModel[name] = (byModel[name] || 0) + num(n);
+    }
+  }
+  const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, tokens: n }));
+
+  const dayMs = 86400000;
+  const ord = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / dayMs;
+  const active = days.filter((d) => d.messages > 0).map((d) => ord(d.date));
+  let longest = 0;
+  let run = 0;
+  for (let i = 0; i < active.length; i++) {
+    run = i && active[i] === active[i - 1] + 1 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+  }
+  const last = active[active.length - 1];
+  const asOf = typeof raw.lastComputedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.lastComputedDate) ? raw.lastComputedDate : null;
+  const ends = [ord(today), ord(today) - 1, asOf && ord(asOf)].filter(Number.isFinite);
+  const streak = last != null && ends.includes(last) ? run : 0;
+
+  let peakHour = null;
+  for (const [h, n] of Object.entries(raw.hourCounts || {})) {
+    if (num(n) && (peakHour == null || n > raw.hourCounts[peakHour])) peakHour = h;
+  }
+  return {
+    sessions: num(raw.totalSessions) || days.reduce((s, d) => s + d.sessions, 0),
+    messages: num(raw.totalMessages) || days.reduce((s, d) => s + d.messages, 0),
+    tools: days.reduce((s, d) => s + d.tools, 0),
+    tokens,
+    models,
+    activeDays: active.length,
+    streak,
+    longest,
+    peakHour: peakHour == null ? null : +peakHour,
+    since: typeof raw.firstSessionDate === 'string' ? raw.firstSessionDate.slice(0, 10) : days[0]?.date || null,
+    asOf,
+    days: days.map(({ date, messages }) => ({ date, messages })),
+  };
+}
+
 module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, parseMsysPs, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
@@ -406,4 +472,5 @@ module.exports = {
   parseMcpList,
   remapSplits,
   edgeHold,
+  modelName, summarizeStats,
 };

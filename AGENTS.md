@@ -269,7 +269,12 @@ site/            the product page (static, open index.html or serve the folder; 
   don't renumber when a tab opens.
 - **Home screen** = no active tab (`activeId` null; `body.no-tabs`, `syncHome`), not "no tabs": clicking the logo or app
   name (`#home`, `goHome`) shows it while other tabs keep running in the sidebar. Like closing the last tab, it saves no
-  tabs for restore. No Mac branch.
+  tabs for restore. Next to the projects it shows plan usage (the footer's `usage`) and **Claude stats** (`homeActivity`):
+  totals, streak and a messages-per-day map from Claude Code's own `/stats` cache, `~/.claude/stats-cache.json`
+  (undocumented, version 5; Claude rewrites it only when `/stats` runs, so the page says "Updated <date>"). Main's
+  `stats:get` re-reads it only when its mtime changes and returns `summarizeStats` (lib/parse.js; null for a missing file
+  or unknown shape); the map's cells come from `activityGrid` (lib/ui.js). `pollStats` runs when the home screen shows
+  and on focus, never with a tab active. `renderWelcome` is key-diffed (`lastWelcomeKey`). No Mac branch (same path).
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
 - **Notifications** (`trackTab` / `notifyTab` in renderer.js, `notify` in main.js): "<project>: Needs input" or

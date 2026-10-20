@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('api', {
   imageFull: (cwd, sessionId, id) => ipcRenderer.invoke('images:full', cwd, sessionId, id),
   revealImage: (cwd, sessionId, id) => ipcRenderer.invoke('images:reveal', cwd, sessionId, id),
   getUsage: () => ipcRenderer.invoke('usage:get'),
+  getStats: (today) => ipcRenderer.invoke('stats:get', today),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   applyUpdate: () => ipcRenderer.invoke('update:apply'),
   listPorts: () => ipcRenderer.invoke('ports:list'),

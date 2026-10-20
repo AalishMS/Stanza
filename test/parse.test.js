@@ -410,3 +410,50 @@ test('edgeHold on the right keeps the right sidebar out just right of the window
   assert.equal(p.edgeHold({ x: 920, y: 625 }, b, 64, 40, 'right', 24), 'hold');
   assert.equal(p.edgeHold({ x: 920, y: 640 }, b, 64), 'away'); // left is still the default side
 });
+
+test('modelName groups the id spellings of one model', () => {
+  assert.equal(p.modelName('claude-opus-5-5'), 'Opus 5.5');
+  assert.equal(p.modelName('anthropic/claude-opus-4-8-ps-aws-dst'), 'Opus 4.8');
+  assert.equal(p.modelName('MaaS_Cl_Opus_4.8_20260528_cache'), 'Opus 4.8');
+  assert.equal(p.modelName('claude-sonnet-4-5-20250929'), 'Sonnet 4.5');
+  assert.equal(p.modelName('claude-fable-5-1'), 'Fable 5.1');
+  assert.equal(p.modelName('claude-3-haiku'), null);
+  assert.equal(p.modelName('<synthetic>'), null);
+});
+
+test('summarizeStats reads Claude Code\'s /stats cache', () => {
+  const raw = { // trimmed from a real ~/.claude/stats-cache.json (version 5)
+    version: 5, lastComputedDate: '2026-10-16',
+    dailyActivity: [
+      { date: '2026-10-09', messageCount: 10, sessionCount: 1, toolCallCount: 2 },
+      { date: '2026-10-14', messageCount: 5, sessionCount: 1, toolCallCount: 1 },
+      { date: '2026-10-15', messageCount: 5690, sessionCount: 26, toolCallCount: 2492 },
+      { date: '2026-10-16', messageCount: 2626, sessionCount: 13, toolCallCount: 598 },
+      { date: '2026-10-08', messageCount: 4, sessionCount: 1, toolCallCount: 0 },
+    ],
+    dailyModelTokens: [
+      { date: '2026-10-15', tokensByModel: { 'claude-opus-5-5': 500, 'claude-sonnet-5-5': 60, 'claude-fable-5-1': 200 } },
+      { date: '2026-10-16', tokensByModel: { 'claude-opus-5-5': 100, '<synthetic>': 1 } },
+    ],
+    totalSessions: 331, totalMessages: 63712,
+    firstSessionDate: '2026-08-21T08:55:20.473Z',
+    hourCounts: { 0: 2, 9: 18, 20: 31, 21: 31 },
+  };
+  const s = p.summarizeStats(raw, '2026-10-20'); // the cache is 4 days old: its own date still ends the streak
+  assert.equal(s.sessions, 331);
+  assert.equal(s.messages, 63712);
+  assert.equal(s.tools, 3093);
+  assert.equal(s.tokens, 861);
+  assert.deepEqual(s.models.map((m) => m.name), ['Opus 5.5', 'Fable 5.1', 'Sonnet 5.5']);
+  assert.equal(s.activeDays, 5);
+  assert.equal(s.streak, 3);
+  assert.equal(s.longest, 3);
+  assert.equal(s.peakHour, 20);
+  assert.equal(s.since, '2026-08-21');
+  assert.equal(s.days[0].date, '2026-10-08'); // sorted
+  assert.equal(p.summarizeStats({ ...raw, lastComputedDate: '2026-10-18' }, '2026-10-20').streak, 0); // broken
+  assert.equal(p.summarizeStats(raw, '2026-10-17').streak, 3); // ended yesterday
+  assert.equal(p.summarizeStats(null, '2026-10-20'), null);
+  assert.equal(p.summarizeStats({ version: 99 }, '2026-10-20'), null);
+  assert.equal(p.summarizeStats({ dailyActivity: [] }, '2026-10-20').streak, 0);
+});

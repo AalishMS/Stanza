@@ -269,3 +269,15 @@ test('eolOf / withEol: the editor saves with the file\'s own line ending', () =>
   assert.equal(ui.withEol('a\r\nb\n', '\n'), 'a\nb\n');
   assert.equal(ui.withEol('', '\r\n'), '');
 });
+
+test('activityGrid: Monday-first weeks ending on today, levels on a square-root scale, future days null', () => {
+  const g = ui.activityGrid([{ date: '2026-10-20', messages: 100 }, { date: '2026-10-12', messages: 25 }, { date: '2026-01-01', messages: 999 }], '2026-10-20', 2);
+  assert.equal(g.length, 2);
+  assert.equal(g[0][0].date, '2026-10-12'); // a Monday
+  assert.deepEqual([g[0][0].n, g[0][0].level], [25, 2]); // ceil(4 * sqrt(0.25))
+  assert.equal(g[0][1].level, 0);
+  assert.equal(g[1][1].date, '2026-10-20'); // today is a Tuesday
+  assert.equal(g[1][1].level, 4);
+  assert.equal(g[1][2], null);
+  assert.equal(ui.activityGrid([], '2026-10-20', 1)[0][0].level, 0);
+});

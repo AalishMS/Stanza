@@ -243,9 +243,38 @@
   const eolOf = (text) => (/\r\n/.test(text) ? '\r\n' : '\n');
   const withEol = (text, eol) => (eol === '\r\n' ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
 
+  // -------------------------------------------------------- home activity ----
+  /**
+   * The home screen's activity map: `weeks` columns of 7 days (Monday first), the last one holding `today`
+   * ("YYYY-MM-DD"). Cells: { date, n, level 0-4 } (level on a square-root scale of the busiest day shown, so one huge
+   * day doesn't wash out the rest), null for days after today.
+   */
+  function activityGrid(days, today, weeks) {
+    const dayMs = 86400000;
+    const ord = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / dayMs;
+    const iso = (o) => new Date(o * dayMs).toISOString().slice(0, 10);
+    const t = ord(today);
+    const start = t - ((new Date(t * dayMs).getUTCDay() + 6) % 7) - (weeks - 1) * 7;
+    const count = new Map((days || []).map((d) => [d.date, d.messages || 0]));
+    let max = 0;
+    for (let o = start; o <= t; o++) max = Math.max(max, count.get(iso(o)) || 0);
+    const out = [];
+    for (let w = 0; w < weeks; w++) {
+      const col = [];
+      for (let d = 0; d < 7; d++) {
+        const o = start + w * 7 + d;
+        if (o > t) { col.push(null); continue; }
+        const n = count.get(iso(o)) || 0;
+        col.push({ date: iso(o), n, level: n && max ? Math.max(1, Math.ceil(4 * Math.sqrt(n / max))) : 0 });
+      }
+      out.push(col);
+    }
+    return out;
+  }
+
   const helpers = {
     contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
-    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol,
+    jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid,
   };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);

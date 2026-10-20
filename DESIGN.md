@@ -325,12 +325,23 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 - `:focus-within`: border `--ring` + ring shadow.
 
 ### Welcome screen
-- Centered column (max 680), logo (56 px, `shadow-md`), "What should we build?" (32 px h1), one muted line, then the
+- Centered column (max 680), logo (44 px, `shadow-md`), "What should we build?" (32 px h1), one muted line, then the
   projects as one bordered card (`rounded-xl`, 1 px `--border`, `shadow-sm`, same recipe as a settings card) under a
   "Projects" label with a ghost sm "Add project" button on its right. `.proj` rows are 1 px `--border`-separated:
   36 px `--muted` icon tile (folder, chat for Chats), name (14 px / 500) + path (11 px `--faint`) left, git info
   (12 px; none for Chats) and an arrow that slides in on hover right; hover bg `--accent` 60 %. Shortcuts are one
-  quiet centered `kbd` line at the bottom.
+  quiet centered `kbd` line at the bottom, sticky (`bottom: 0` on `--background`) so it stays on screen while the page
+  scrolls. Above the h1 a 13 px `--faint` time-of-day greeting. The page fades and
+  rises 6 px in when it is shown (0.35 s, none with reduced motion; on `#welcome` itself, so re-renders don't replay it).
+- Under the projects, **Plan usage** (the footer's limits as `meter big` rows: label, 11 px `--faint` reset text and
+  % (warn/crit colors) on one line, the meter under it). Beside them **Activity** (container query on `#welcome`: from
+  760 px a 340 px right column, max width 1000, stretched so its card ends where Plan usage does, the spare height
+  spread between its parts; below that stacked last). Section heads are 36 px tall with or without a button, so the
+  cards' tops line up. Both are a `proj-card` with 16 px padding under a `proj-label` head (meta right, 11 px
+  `--faint`). Activity: 2x2 totals (22 px / 600 tabular value, 12 px muted label, 11 px faint sub; 4 across while
+  stacked at 560 px+), a 1 px divider, then an 18-week messages-per-day map (Monday on top, 2 px rounded squares,
+  `--muted` empty, then `--primary` mixed into `--muted` at 38 / 60 / 80 / 100 %: the shade is data, so it may use the
+  accent; today ringed with `--ring`), its "Busiest around …" / Less-More legend line and an "Updated <date>" line.
 
 ### Popover: shadcn `Popover`
 - `#detail` and the exit `.overlay`: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 12–16.

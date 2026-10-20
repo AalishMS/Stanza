@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid -- lib/ui.js */
 /* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
@@ -216,6 +216,7 @@ let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
+let stats = null; // Claude Code's /stats cache, summarized by main (summarizeStats), for the home screen; null = none
 let update = null; // { available, behind, packaged, subjects } new commits upstream of the app's own git checkout
 let updating = false; // git pull / npm install running
 let checking = false; // manual "check for updates" fetch running
@@ -2295,40 +2296,111 @@ function setDetail(kind) {
   renderFoot(true);
 }
 
+const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dayText = (iso, opts = { month: 'short', day: 'numeric' }) => new Date(`${iso}T12:00:00`).toLocaleDateString([], opts);
+const hourText = (hr) => new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: 'numeric' });
+const HOME_WEEKS = 18;
+
+/** Plan limits (the footer's usage, from Anthropic) as meters. */
+function homeUsage() {
+  if (!usage?.ok || !usage.limits.length) return null;
+  return h('section', { class: 'home-sec' },
+    h('div', { class: 'proj-head' }, h('div', { class: 'proj-label' }, 'Plan usage'),
+      usage.stale ? h('span', { class: 'home-meta' }, `${Math.round((Date.now() - usage.fetchedAt) / 60000)} min ago`) : null),
+    h('div', { class: 'proj-card home-card' },
+      usage.limits.map((l) => {
+        const pct = limitPct(l);
+        return h('div', { class: 'home-lim' },
+          h('div', { class: 'home-lim-row' },
+            h('span', {}, l.label), h('span', { class: 'home-reset' }, fmtReset(l)),
+            h('span', { class: `home-pct ${levelOf(pct)}` }, `${pct}%`)),
+          h('span', { class: `meter big ${levelOf(pct)}` }, h('i', { style: `width:${pct}%` })));
+      })));
+}
+
+/** Totals, streak and a messages-per-day map from Claude Code's /stats cache. */
+function homeActivity() {
+  const head = (meta) => h('div', { class: 'proj-head' }, h('div', { class: 'proj-label' }, 'Activity'), meta);
+  if (!stats) {
+    return h('section', { class: 'home-sec' }, head(null),
+      h('div', { class: 'proj-card home-card' }, h('p', { class: 'home-empty' }, 'Run /stats in a Claude session once to see your activity here.')));
+  }
+  const tile = (value, label, sub) => h('div', { class: 'home-tile' },
+    h('div', { class: 'home-val' }, value), h('div', { class: 'home-k' }, label), sub ? h('div', { class: 'home-sub' }, sub) : null);
+  const today = localDay();
+  const grid = activityGrid(stats.days, today, HOME_WEEKS);
+  const top = stats.models[0];
+  const old = stats.asOf && stats.asOf < localDay(new Date(Date.now() - 86400000));
+  return h('section', { class: 'home-sec' },
+    head(stats.since ? h('span', { class: 'home-meta' }, `since ${dayText(stats.since, { month: 'short', day: 'numeric', year: 'numeric' })}`) : null),
+    h('div', { class: 'proj-card home-card' },
+      h('div', { class: 'home-tiles' },
+        tile(compact.format(stats.sessions), 'Sessions', `${stats.activeDays} active days`),
+        tile(compact.format(stats.messages), 'Messages', stats.tools ? `${compact.format(stats.tools)} tool calls` : null),
+        tile(compact.format(stats.tokens), 'Tokens', top ? `mostly ${top.name}` : null),
+        tile(String(stats.streak), 'Day streak', `best ${stats.longest}`)),
+      h('div', { class: 'heat-wrap' },
+        h('div', { class: 'heat', style: `--weeks:${HOME_WEEKS}` },
+          grid.flat().map((c) => (c
+            ? h('i', {
+                class: `l${c.level}${c.date === today ? ' today' : ''}`,
+                title: `${c.n ? c.n.toLocaleString() : 'No'} messages, ${dayText(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}`,
+              })
+            : h('i', { class: 'none' })))),
+        h('div', { class: 'heat-foot' },
+          h('span', {}, stats.peakHour != null ? `Busiest around ${hourText(stats.peakHour)}` : 'Messages per day'),
+          h('span', { class: 'heat-legend' }, 'Less', [0, 1, 2, 3, 4].map((l) => h('i', { class: `l${l}` })), 'More'))),
+      stats.asOf ? h('div', { class: 'home-asof', title: 'Claude Code updates these numbers when /stats runs' },
+        `Updated ${dayText(stats.asOf)}${old ? ' · run /stats to refresh' : ''}`) : null));
+}
+
+let lastWelcomeKey = '';
 function renderWelcome() {
   const root = $('#welcome');
   const hasProjects = realProjects().length > 0;
+  const hints = [['newSession', 'new session'], ['nextSession', 'switch'], ['toggleSidebar', 'sidebar'], ['toggleRside', 'side panel'], ['settings', 'settings']];
+  // Rebuilt only when what it shows changed (git polls call it every few seconds)
+  const key = JSON.stringify([projects, git, stats, usage, Math.floor(Date.now() / 60000), hints.map(([id]) => keyText(id))]);
+  if (key === lastWelcomeKey) return;
+  lastWelcomeKey = key;
+  const hour = new Date().getHours();
   root.replaceChildren(
     h('div', { class: 'welcome-inner' },
-      h('div', { class: 'big-logo', html: LOGO_IMG }),
-      h('h1', {}, 'What should we build?'),
-      h('p', {}, hasProjects ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.'),
-      hasProjects // Chats alone doesn't count: keep the Add project button until there is a real one
-        ? h('div', { class: 'proj-list' },
-            h('div', { class: 'proj-head' },
-              h('div', { class: 'proj-label' }, 'Projects'),
-              h('button', { class: 'btn ghost sm', onclick: addProjects }, ico('folderPlus'), 'Add project')),
-            h('div', { class: 'proj-card' },
-              projects.some((p) => p.chat) ? null : h('div', { class: 'proj', onclick: openChat },
-                h('span', { class: 'proj-ico' }, ico('chat')),
-                h('div', { class: 'proj-main' },
-                  h('div', { class: 'p-name' }, 'No project'),
-                  h('div', { class: 'p-path' }, 'Chat outside your projects')),
-                h('span', { class: 'proj-go' }, ico('arrowRight'))),
-              projects.map((p) =>
-                h('div', { class: 'proj', onclick: () => focusProject(p) },
-                  h('span', { class: 'proj-ico' }, ico(p.chat ? 'chat' : 'folder')),
-                  h('div', { class: 'proj-main' },
-                    h('div', { class: 'p-name' }, projName(p)),
-                    h('div', { class: 'p-path' }, h('bdi', {}, p.path))),
-                  p.chat ? null : h('div', { class: 'p-git' }, gitPills(git[p.path])),
-                  h('span', { class: 'proj-go' }, ico('arrowRight'))))))
-        : h('div', { class: 'welcome-acts' },
-            h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
-            h('button', { class: 'btn outline', onclick: openChat }, ico('chat'), 'Chat without a project')),
+      h('div', { class: 'welcome-hero' },
+        h('div', { class: 'big-logo', html: LOGO_IMG }),
+        h('div', { class: 'hello' }, hour < 5 ? 'Up late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'),
+        h('h1', {}, 'What should we build?'),
+        h('p', {}, hasProjects ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.')),
+      h('div', { class: 'welcome-grid' },
+        h('div', { class: 'welcome-main' },
+          hasProjects // Chats alone doesn't count: keep the Add project button until there is a real one
+            ? h('div', { class: 'proj-list' },
+                h('div', { class: 'proj-head' },
+                  h('div', { class: 'proj-label' }, 'Projects'),
+                  h('button', { class: 'btn ghost sm', onclick: addProjects }, ico('folderPlus'), 'Add project')),
+                h('div', { class: 'proj-card' },
+                  projects.some((p) => p.chat) ? null : h('div', { class: 'proj', onclick: openChat },
+                    h('span', { class: 'proj-ico' }, ico('chat')),
+                    h('div', { class: 'proj-main' },
+                      h('div', { class: 'p-name' }, 'No project'),
+                      h('div', { class: 'p-path' }, 'Chat outside your projects')),
+                    h('span', { class: 'proj-go' }, ico('arrowRight'))),
+                  projects.map((p) =>
+                    h('div', { class: 'proj', onclick: () => focusProject(p) },
+                      h('span', { class: 'proj-ico' }, ico(p.chat ? 'chat' : 'folder')),
+                      h('div', { class: 'proj-main' },
+                        h('div', { class: 'p-name' }, projName(p)),
+                        h('div', { class: 'p-path' }, h('bdi', {}, p.path))),
+                      p.chat ? null : h('div', { class: 'p-git' }, gitPills(git[p.path])),
+                      h('span', { class: 'proj-go' }, ico('arrowRight'))))))
+            : h('div', { class: 'welcome-acts' },
+                h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
+                h('button', { class: 'btn outline', onclick: openChat }, ico('chat'), 'Chat without a project')),
+          homeUsage()),
+        h('div', { class: 'welcome-side' }, homeActivity())),
       h('div', { class: 'hint' },
-        [['newSession', 'new session'], ['nextSession', 'switch'], ['toggleSidebar', 'sidebar'], ['toggleRside', 'side panel'], ['settings', 'settings']]
-          .map(([id, label]) => (keyText(id) ? h('span', {}, h('kbd', {}, keyText(id)), ` ${label}`) : null)))));
+        hints.map(([id, label]) => (keyText(id) ? h('span', {}, h('kbd', {}, keyText(id)), ` ${label}`) : null)))));
 }
 
 // -------------------------------------------------------------- settings ----
@@ -3504,6 +3576,7 @@ const sidebarShown = () => ui.sidebar || (!activeId && !restoring);
  * into the layout (or leaves it) when that changes. */
 function syncHome() {
   document.body.classList.toggle('no-tabs', !activeId);
+  if (!activeId) pollStats();
   if (document.body.classList.contains('sidebar-collapsed') === sidebarShown()) placeBrand();
 }
 
@@ -3981,7 +4054,7 @@ async function pollUsage() {
   usageBusy = true;
   try {
     const next = await api.getUsage();
-    if (JSON.stringify(next) !== JSON.stringify(usage)) { usage = next; renderFoot(); }
+    if (JSON.stringify(next) !== JSON.stringify(usage)) { usage = next; renderFoot(); renderWelcome(); }
     // At launch the network or token may not be ready yet: retry soon instead of waiting for the next poll.
     // Not for HTTP failures (429 above all): main backs off by Retry-After, fast retries would only extend it.
     if (!next.ok && !next.status && ++usageRetries <= 5) setTimeout(pollUsage, 3000);
@@ -3990,6 +4063,19 @@ async function pollUsage() {
     if (++usageRetries <= 5) setTimeout(pollUsage, 3000);
   } finally {
     usageBusy = false;
+  }
+}
+
+// Home screen only: shown again, the stats are re-read (main re-parses the file only when it changed).
+let statsBusy = false;
+async function pollStats() {
+  if (statsBusy || document.hidden || activeId) return;
+  statsBusy = true;
+  try {
+    const next = await api.getStats(localDay());
+    if (JSON.stringify(next) !== JSON.stringify(stats)) { stats = next; renderWelcome(); }
+  } catch { /* the home screen just shows no stats */ } finally {
+    statsBusy = false;
   }
 }
 
@@ -4081,12 +4167,12 @@ function wireGlobalEvents() {
   }, true);
 
   window.addEventListener('focus', () => {
-    pollGit(); pollPorts(); pollSessions(); pollUsage();
+    pollGit(); pollPorts(); pollSessions(); pollUsage(); pollStats();
     if (settingsOpen) $('#settings').focus();
     else if (document.activeElement?.id !== 'session-search') activeTab()?.term.focus();
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { pollGit(); pollPorts(); pollSessions(); pollUsage(); }
+    if (!document.hidden) { pollGit(); pollPorts(); pollSessions(); pollUsage(); pollStats(); }
   });
   document.addEventListener('mousedown', (e) => {
     // Closed without rebuilding the footer: a rebuild on mousedown swallowed the click on its gear or update button.

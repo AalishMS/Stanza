@@ -9,7 +9,7 @@ const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
   oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
-  parseAgentFile, parseMcpList, remapSplits, edgeHold,
+  parseAgentFile, parseMcpList, remapSplits, edgeHold, summarizeStats,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
 
@@ -754,6 +754,20 @@ const AGENT_STALE_MS = 10 * 60 * 1000; // an unfinished agent silent this long w
 async function readJson(file) {
   try {
     return JSON.parse((await fs.promises.readFile(file, 'utf8')).replace(/^\uFEFF/, ''));
+  } catch {
+    return null;
+  }
+}
+
+// Home screen stats: Claude Code's own /stats cache, re-read only when the file changes. `today` = the renderer's local
+// date, for the streak. null when the file is missing or of a shape we don't know.
+const STATS_FILE = path.join(os.homedir(), '.claude', 'stats-cache.json');
+let statsCache = null; // { mtime, raw }
+async function getStats(today) {
+  try {
+    const st = await fs.promises.stat(STATS_FILE);
+    if (statsCache?.mtime !== st.mtimeMs) statsCache = { mtime: st.mtimeMs, raw: await readJson(STATS_FILE) };
+    return summarizeStats(statsCache.raw, String(today || ''));
   } catch {
     return null;
   }
@@ -1784,6 +1798,7 @@ function registerIpc() {
   ipcMain.handle('images:full', (_e, cwd, sessionId, id) => imageFull(cwd, sessionId, id));
   ipcMain.handle('images:reveal', (_e, cwd, sessionId, id) => revealImage(cwd, sessionId, id));
   ipcMain.handle('usage:get', () => getLimits());
+  ipcMain.handle('stats:get', (_e, today) => getStats(today));
   ipcMain.handle('update:check', () => checkUpdate());
   ipcMain.handle('update:apply', () => applyUpdate());
 
