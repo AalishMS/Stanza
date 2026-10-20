@@ -84,7 +84,7 @@ swatches set `data-accent` on the swatch and paint `var(--primary)`. A new accen
 `[data-accent]` rule, and the `ACCENTS` lists in main.js and renderer.js.
 
 Primary appears **only** on: primary buttons, focus rings, progress-meter fills, the checked checkbox, the
-"needs attention" status dot, drag-and-drop targets (split drop preview) and the sidebar's split group. Nothing else gets it. The one exception to
+"needs attention" status dot, drag-and-drop targets (split drop preview) and the sidebar's split-group rail. Nothing else gets it. The one exception to
 "single accent": with several split groups, groups after the first take `--group-1..4` (violet, teal, rose, orange,
 away from the status hues) so they can be told apart; a lone group is always `--primary`. When the accent is one of
 those hues, its `[data-accent]` rule swaps that group color for blue, so the five stay distinct.
@@ -137,14 +137,13 @@ no outline, no other color, no background change. Panes clip their content so no
 would drop under ~100 columns the right sidebar hides itself and returns when there is room (see AGENTS.md).
 
 ### Split group (sidebar)
-Like a browser tab group: one soft card (`rounded-lg`, 3 px inset) with a 1 px inset ring of the group's color `--g`
-at 30 % and a faint `--g` 6 % wash. `--g` is `--primary` for a lone group; with several groups each keeps the color it
-got when created (`.g0`..`.g4`, the lowest free one). While the group isn't on screen the wash goes and the ring turns
-neutral `--border`; clicking the header shows it. Header 24 px: columns (or rows, when stacked) icon in the dot column,
-tinted `--g` 70 % mixed with `--foreground` (the only colored glyph; `--faint` when idle), "Split view" 12 px / 500
-`--muted-foreground`, and the member count as a small mono chip (10 px, 6 % `--foreground` fill, `rounded-sm`) that
-swaps for a 22 px ghost `×` (unsplit) on hover, like a row's time and `×`. Rows inside drop 3 px of left padding so
-the dot column stays at 28 px, and use a 7 px radius so the corners nest. The group lives in its project's list, at its first member's place in tab order; when members come from
+No card and no header: the members are ordinary flat session rows, threaded by a 2 px rail (radius 1 px) down the dot
+column (centred at 37 px), from the first row's dot to the last's, like stops on a line. The rail is `--g` 80 % mixed
+with `--foreground` (a touch brighter in dark, darker in light) and is drawn above the rows' hover/selected fill, the
+dots above it. `--g` is `--primary` for a lone group; with several groups each keeps the color it got when created
+(`.g0`..`.g4`, the lowest free one). While the group isn't on screen the rail turns neutral (`--faint` at 55 %);
+clicking any of its rows shows it. A member row's `…` menu adds "Take out of split" and "Unsplit" (the top-bar button
+and `Ctrl+Shift+\` still unsplit the group on screen). The group lives in its project's list, at its first member's place in tab order; when members come from
 different projects it sits at the top of the list and each row shows its project name (11 px `--faint`) in place of the time.
 
 ### Settings page

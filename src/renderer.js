@@ -1841,26 +1841,15 @@ function tabRow(t, showProject = false) {
 }
 
 /**
- * A split group's members in one soft card, like a browser tab group: inside their project's list, or at the top of the
- * sidebar when they come from different projects (each row then names its project). Clicking the header shows the
- * group when it isn't on screen; its × unsplits it. With several groups each has its own color.
+ * A split group's member rows, threaded by a rail in the group's color: inside their project's list, or at the top of
+ * the sidebar when they come from different projects (each row then names its project). Clicking a row shows its group;
+ * the rows' menu takes one out or unsplits. With several groups each has its own color.
  */
 function splitGroup(g, showProject) {
   const members = g.ids.map((id) => tabs.get(id)).filter(Boolean);
   const live = members.some((t) => t.id === activeId);
   const color = splits.length > 1 ? g.color : 0;
   return h('div', { class: `split-group g${color}${live ? '' : ' idle'}` },
-    h('div', {
-      class: 'sg-head', title: live ? 'On screen side by side' : 'Click to show these side by side again',
-      onclick: () => { if (!live) activate(members[0].id); },
-    },
-      h('span', { class: 'sg-ico' }, ico(g.v ? 'rows' : 'columns')),
-      h('span', { class: 'sg-label' }, 'Split view'),
-      h('span', { class: 'sg-count' }, String(members.length)),
-      h('button', {
-        class: 'btn ghost icon sm', title: live ? tip('Back to one terminal', 'unsplit') : 'Unsplit',
-        onclick: (e) => { e.stopPropagation(); unsplit(g); },
-      }, ico('x'))),
     members.map((t) => tabRow(t, showProject)));
 }
 
@@ -2103,12 +2092,16 @@ function sessionMenu(p, s, t, e, row = null) {
   let x = e.clientX, y = e.clientY, flipY = y;
   if (row) { const r = e.currentTarget.getBoundingClientRect(); x = r.left; y = r.bottom + 4; flipY = r.top - 4; }
   const room = activeId && visibleIds().length < SPLIT_MAX;
+  const g = t && groupOf(t.id);
   openMenu(key, [
     menuItem('arrowRight', t ? 'Show' : 'Open', () => openSessionRow(p, s)),
     room ? menuItem('columns', 'Open beside', () => besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))) : null,
     h('div', { class: 'menu-sep' }),
     menuItem('fork', 'Fork session', () => openSession(p, { resumeId: s.id, fork: true })),
     room ? menuItem('fork', 'Fork beside', () => openSession(p, { resumeId: s.id, fork: true, beside: true })) : null,
+    g ? h('div', { class: 'menu-sep' }) : null,
+    g ? menuItem('minus', 'Take out of split', () => minimizePane(t.id)) : null,
+    g ? menuItem('x', 'Unsplit', () => unsplit(g)) : null,
     h('div', { class: 'menu-sep' }),
     t?.skipPerms
       ? menuItem('redo', 'Relaunch with permissions', () => relaunchTab(t, false))

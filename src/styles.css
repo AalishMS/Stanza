@@ -370,36 +370,22 @@ body.resizing .rz { pointer-events: auto; }
 .session:hover .s-menu, .session.menu-open .s-menu { display: inline-flex; }
 .session:hover .s-time, .session:hover .s-proj, .session.menu-open .s-time, .session.menu-open .s-proj { display: none; }
 .s-proj { flex: 0 1 auto; max-width: 40%; padding-right: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; color: var(--faint); }
-/* split group (like a browser tab group): one soft card, a hairline ring and a faint wash in the group's color.
-   The card has a 3px inset, so its rows drop 3px of left padding and the dot column stays at 28px; their radius
-   steps down to 7px so the corners nest. --g is the group's color: --primary (g0) for a lone group, one of the
-   --group-* tokens each when there are several. Off screen (.idle) it fades to a neutral outline. */
+/* split group: plain rows threaded by a 2px rail in the group's color down the dot column (centre 37px), from the
+   first row's dot to the last's; the dots sit on top of it. No card, no header. --g is the group's color: --primary
+   (g0) for a lone group, one of the --group-* tokens each when there are several. Off screen (.idle) the rail turns
+   neutral. The rail is drawn above the rows' hover/selected fill (isolation keeps its z-index inside the group). */
 .split-group.g0 { --g: var(--primary); }
 .split-group.g1 { --g: var(--group-1); }
 .split-group.g2 { --g: var(--group-2); }
 .split-group.g3 { --g: var(--group-3); }
 .split-group.g4 { --g: var(--group-4); }
-.split-group {
-  display: flex; flex-direction: column; gap: 2px; flex: none; padding: 3px; border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--g) 6%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--g) 30%, transparent);
-  transition: background-color 0.15s, box-shadow 0.15s;
+.split-group { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 2px; flex: none; }
+.split-group::before {
+  content: ""; position: absolute; z-index: 1; left: 36px; top: 16px; bottom: 16px; width: 2px; border-radius: 1px;
+  background: color-mix(in srgb, var(--g) 80%, var(--foreground)); transition: background-color 0.15s;
 }
-.split-group.idle { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
-.split-group .session { padding-left: 25px; border-radius: 7px; }
-.sg-head { display: flex; align-items: center; gap: 6px; height: 24px; flex: none; padding: 0 1px 0 25px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
-.split-group.idle .sg-head { cursor: pointer; }
-.split-group.idle .sg-head:hover { color: var(--foreground); }
-/* layout glyph in the dot column, the one spot of group color */
-.sg-ico { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; color: color-mix(in srgb, var(--g) 70%, var(--foreground)); }
-.split-group.idle .sg-ico { color: var(--faint); }
-.sg-ico .ico { width: 13px; height: 13px; }
-.sg-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sg-count { flex: none; min-width: 18px; height: 16px; padding: 0 5px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--foreground) 6%, transparent); color: var(--muted-foreground); font: 500 10px/16px var(--mono); text-align: center; }
-.sg-head .btn { width: 22px; height: 22px; display: none; }
-.sg-head .btn .ico { width: 12px; height: 12px; }
-.split-group:hover .sg-head .btn { display: inline-flex; }
-.split-group:hover .sg-count { display: none; }
+.split-group.idle::before { background: color-mix(in srgb, var(--faint) 55%, transparent); }
+.split-group .s-mark { position: relative; z-index: 2; }
 .s-note, .s-more { height: 28px; flex: none; padding: 0 8px 0 52px; display: flex; align-items: center; font-size: 12px; color: var(--faint); }
 .s-more { cursor: pointer; }
 .s-more:hover { color: var(--foreground); }

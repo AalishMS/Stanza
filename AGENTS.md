@@ -247,10 +247,10 @@ site/            the product page (static, open index.html or serve the folder; 
   most one; `groupOf(id)`, `curSplit()` = the active tab's group). The group on screen shows 2-4 tabs as a grid in `#terminals`
   (2 = A|B, 3 = A|(B over C), 4 = 2x2; `v` = stacked, started by "New session below": 2 = A over B, 3 = A over (B|C), which
   `paneCell` / `cellRect` get by transposing) with draggable dividers. `focusPane(dir)` picks the nearest pane that way,
-  `nudgeSplit(dir)` moves a divider by 5 %. The sidebar shows each group in a `.split-group` box (`splitGroup`): inside
+  `nudgeSplit(dir)` moves a divider by 5 %. The sidebar shows each group as its rows threaded by a colored rail (`.split-group`, `splitGroup`; no box or header): inside
   their project's list where the first member sits in tab order, or at the top of `#projects` when they come from different
   projects (rows then show the project name). With several groups each box has its color (`.g0`..`.g4` = `--primary`,
-  `--group-1..4`, the lowest free index at creation); a lone group is always `.g0`. Its header shows it, its × `unsplit(g)`. `activeId` is the focused pane, so status bar, right sidebar and
+  `--group-1..4`, the lowest free index at creation); a lone group is always `.g0`; off screen the rail turns neutral. A member row's `…` menu (`sessionMenu`) has "Take out of split" (`minimizePane`) and "Unsplit" (`unsplit(g)`). `activeId` is the focused pane, so status bar, right sidebar and
   polling keep following one tab. `visibleIds()` = the active tab's group, else just the active tab (focusing a member of another group
   switches the terminal area to that group). `addToSplit` adds to the visible group or starts a new one with the active tab; a pane header's `−` (`minimizePane`) takes
   that tab out of its group (still running, focus to its neighbour);
