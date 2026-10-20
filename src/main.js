@@ -1579,7 +1579,14 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  // macOS Cmd+Q / Dock Quit call app.quit() with the window still open: close it first, so its 'close' handler asks the
+  // renderer (busy tabs) and only a confirmed quit (forceClose) ends the sessions; ending them here first left "Keep open" with dead tabs
+  if (!forceClose && sessions.size && mainWindow && !mainWindow.isDestroyed()) {
+    e.preventDefault();
+    mainWindow.close();
+    return;
+  }
   for (const s of sessions.values()) endSession(s);
 });
 

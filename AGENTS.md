@@ -144,6 +144,8 @@ site/            the product page (static, open index.html or serve the folder; 
     Windows uses `assets/icon.ico` for the window and taskbar; macOS uses `assets/icon-mac.png` (padded to Apple's 824/1024 grid so the Dock icon matches its neighbours).
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.
+    Cmd+Q / Dock Quit call `app.quit()` with the window open, so `before-quit` comes first: without `forceClose` it cancels
+    and closes the window instead (its 'close' handler asks the renderer); ending the sessions there first left "Keep open" with dead tabs.
   - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
   - Sidebar peek (`wirePeek` / `makePeek`, a collapsed left sidebar slides in from the left edge, a closed right one from
     the right edge; DESIGN.md "Peek" / "Right peek"): no Mac branch; the edge zones start below the top bar, so the left
