@@ -19,13 +19,15 @@ everything that needs checking there. Tick what works. For anything that fails, 
 ## Basics
 
 - [ ] The window buttons (red/yellow/green) sit neatly at the top left and don't overlap the logo, with the sidebar
-      shown and hidden (⌘S).
+      shown and hidden (⌘S, with a tab open: the home screen always shows the sidebar).
+- [ ] In full screen (⌃⌘F) the window buttons are hidden, and the sidebar toggle and logo move to the left edge.
+      Leaving full screen moves them back.
 - [ ] A Claude tab starts. If it fails with `posix_spawnp failed`, run
       `chmod +x node_modules/@lydell/node-pty-darwin-*/spawn-helper` and try again.
 - [ ] A shell tab (terminal button in the top bar) opens your usual shell and prompt. Its sidebar row says "Shell".
 - [ ] The project shows its git branch and changed-file count.
 - [ ] Start a dev server from a tab (for example `npx vite`). It appears under **Running** in the right sidebar
-      (⌘⇧S), and clicking the row copies its URL.
+      (⌘⇧S) while that tab is the active one, and clicking the row copies its URL.
 - [ ] The right sidebar lists MCP servers.
 - [ ] The sidebar footer shows plan usage percentages. macOS may ask once for Keychain access. If you deny it, the
       dialog must not come back for 10 minutes.
@@ -34,24 +36,31 @@ everything that needs checking there. Tick what works. For anything that fails, 
 ## Keys
 
 - [ ] ⌘T new session, ⌘W close, ⌘S sidebar, ⌘⇧S right sidebar
-- [ ] ⌘⇧→ split beside, ⌘⇧↓ split below, ⌘⇧↑ split above, ⌘⇧/ takes the focused pane out of the split, ⌘⇧\ unsplit, ⌘⌥← / ⌘⌥→ move between panes
+- [ ] ⌘⇧→ split beside, ⌘⇧↓ split below, ⌘⇧↑ split above, ⌘⇧/ takes the focused pane out of the split, ⌘⇧\ unsplit
+- [ ] While split: ⌘ + arrows move between panes, ⌘⌥ + arrows move the divider
 - [ ] ⌘1–9 jump to a tab, Ctrl+Tab next tab
 - [ ] ⌘= / ⌘- / ⌘0 font size
 - [ ] ⌘C / ⌘V copy and paste in the terminal and in the search box
 - [ ] Right-click in a terminal pastes (and doesn't copy a word instead)
 - [ ] Ctrl+C interrupts Claude, and Ctrl+V pastes an image into Claude
 - [ ] Option+P opens Claude's model picker
-- [ ] ⌘-click a session in the sidebar opens it beside the current one
+- [ ] ⇧-click a session in the sidebar opens it beside the current one (⌘-click just switches to it)
 - [ ] ⌘⌥I opens DevTools
-- [ ] ⌘Q quits, and asks first only if Claude is working
+- [ ] ⌘Q quits, and asks first only if Claude is working or a dev server started from a tab is running. In that
+      prompt, Keep open leaves every tab running (Claude keeps working, the server keeps answering)
 
 ## Restored tabs
 
-- [ ] Open a few tabs across projects: at least one Claude tab you've sent a message in, one Claude tab you haven't
-      written in yet, and a shell tab. Quit (⌘Q) and start the app again.
-- [ ] The tabs come back in the same order, and the tab that was active is active again.
-- [ ] Restored Claude tabs show their earlier conversation (they resume with `claude --resume`). The Claude tab with no
+Only the tabs on screen are restored: the active tab, or its whole split group. Tabs left in the background are not
+reopened; they stay in the sidebar's session lists.
+
+- [ ] Put three tabs on screen in one split (⌘⇧→ adds a pane): a Claude tab you've sent a message in, a Claude tab you
+      haven't written in yet, and a shell tab. Quit (⌘Q) and start the app again.
+- [ ] The split comes back with the same tabs in the same order, and the pane that was focused is focused again.
+- [ ] The restored Claude tab shows its earlier conversation (it resumes with `claude --resume`). The Claude tab with no
       message yet is not restored. The shell tab comes back as a fresh shell.
+- [ ] A Claude tab you left in the background (not on screen when quitting) is not reopened, but is still listed under
+      its project.
 - [ ] The first tab appears right away and the others follow over a second or two. The app doesn't stall at startup.
 - [ ] In the built `.app` opened from Finder, restored Claude tabs start too (they need your shell's PATH).
 
@@ -60,11 +69,12 @@ everything that needs checking there. Tick what works. For anything that fails, 
 - [ ] The first time a notification fires, macOS asks whether to allow notifications (for "Electron" when running
       `npm start`). Allow it.
 - [ ] In a background Claude tab (switch to another tab), ask Claude for something that needs permission (in manual
-      mode: ⇧Tab until the footer says "manual mode", then ask it to run a shell command). Exactly one notification
-      "<project>: Needs input" appears, with the session title as its text.
-- [ ] Ask a background Claude tab for a task that takes more than 10 seconds (for example "run sleep 15 in the shell,
-      then say finished"). Exactly one "<project>: Done" notification appears when it finishes, and no second one a
-      minute later.
+      mode: ⇧Tab until the footer says "manual mode", then ask it to change a file, for example "run `touch probe.txt`";
+      a read-only command like `ls` never asks). Exactly one notification "<project>: Needs input" appears, with the
+      session title as its text.
+- [ ] Ask a background Claude tab for a reply that takes more than 10 seconds (for example "write 50 numbered facts
+      about the ocean, one per line"; "run sleep 15" doesn't work, Claude moves it to a background task and goes idle).
+      Exactly one "<project>: Done" notification appears when it finishes, and no second one a minute later.
 - [ ] A quick reply (under 10 seconds) in a background tab gives no notification.
 - [ ] With the app in the foreground on that same tab, nothing is shown. With another app in front, notifications
       appear even for the active tab.
@@ -77,12 +87,12 @@ everything that needs checking there. Tick what works. For anything that fails, 
 
 - [ ] Open tabs sit at the top of their project's list, newest first. A new session (⌘T) appears as the top row, and
       ⌘1 jumps to it.
-- [ ] On an older tab press ⌘\: the split shows as a "Split view" box at the top of the list. ⌘⇧\ unsplits and the two
+- [ ] On an older tab press ⌘⇧→: the split shows as a "Split view" box at the top of the list. ⌘⇧\ unsplits and the
       rows stay where they were.
-- [ ] Make a second split from a tab outside the first one (focus it, ⌘\): there are now two boxes, each with its own
+- [ ] Make a second split from a tab outside the first one (focus it, ⌘⇧→): there are now two boxes, each with its own
       color. Clicking a session in the other box switches the terminal area to that split.
 - [ ] Dragging a row onto the terminal area still opens it in a split pane. Dragging rows within the sidebar does nothing.
-- [ ] Quit and restart: the tabs come back in the same order (splits are not saved).
+- [ ] Quit and restart: the split that was on screen comes back as a split, with its tabs in the same order.
 
 ## Opened from Finder
 
@@ -97,10 +107,11 @@ Apps opened from Finder don't get your shell's PATH, so this checks the fix for 
 
 Needs a new commit on `main` to show up.
 
-- [ ] In the copy you run with `npm start`, a download icon appears next to "Stanza" at the top of the sidebar
-      within 30 minutes, or right away after restarting the app.
-- [ ] At the same time a popup opens under the icon: "Update available", the new commit messages, and Later /
-      Update… buttons. It doesn't cover the traffic lights, and it sits right with the sidebar hidden (⌘S) too.
+- [ ] In the copy you run with `npm start`, the refresh icon in the sidebar footer (right of the settings gear) turns
+      into a download icon within 30 minutes, or about 10 seconds after restarting the app.
+- [ ] At the same time a popup opens above the icon: "Update available", the new commit messages, and Later /
+      Update… buttons. With the sidebar hidden (⌘S, with a tab open) the icon is hidden too and the popup sits in the
+      bottom-left corner.
 - [ ] Later closes it and it stays closed. Update… opens the update confirmation.
 - [ ] Clicking it and confirming pulls the update and restarts the app.
 - [ ] In the built `.app`, Update… closes the app, and after a minute or two it reopens updated (with your tabs). If it
@@ -111,10 +122,9 @@ Needs a new commit on `main` to show up.
 
 ## Check for updates button
 
-- [ ] A refresh icon sits right after "Stanza" at the top of the sidebar (and stays next to the logo with the
-      sidebar hidden, ⌘S), whether or not an update exists.
-- [ ] Clicking it spins the icon while it checks. With no new commit, a popup under the icon says "You're up to date"
-      and closes by itself after about 5 seconds (or with OK). It doesn't cover the traffic lights.
+- [ ] A refresh icon sits in the sidebar footer, right of the settings gear, whether or not an update exists.
+- [ ] Clicking it spins the icon while it checks. With no new commit, a popup above the icon says "You're up to date"
+      and closes by itself after about 5 seconds (or with OK).
 - [ ] With a new commit on `main`, clicking it opens the "Update available" popup, even if you chose Later before.
 - [ ] Offline (Wi-Fi off), clicking it shows "Couldn't check for updates" with a reason instead of "up to date".
 - [ ] Run from a copy that isn't a git clone (for example a `.app` copied elsewhere): the popup says it isn't a git
