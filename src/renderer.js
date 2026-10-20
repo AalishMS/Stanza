@@ -216,7 +216,7 @@ let git = {}; // projectPath -> info | null
 let ports = { ok: true, servers: [] };
 let sessionsBy = {}; // projectPath -> [{ id, title, mtime, birth, model, ctx }], newest first
 let usage = null; // { ok, limits: [{ kind, label, percent, resetsAt }] } plan limits from Anthropic
-let stats = null; // Claude Code's /stats cache, summarized by main (summarizeStats), for the home screen; null = none
+let stats; // Claude Code's /stats cache, summarized by main (summarizeStats), for the home screen; null = none, undefined = not read yet
 let update = null; // { available, behind, packaged, subjects } new commits upstream of the app's own git checkout
 let updating = false; // git pull / npm install running
 let checking = false; // manual "check for updates" fetch running
@@ -2324,7 +2324,8 @@ function homeActivity() {
   const head = (meta) => h('div', { class: 'proj-head' }, h('div', { class: 'proj-label' }, 'Activity'), meta);
   if (!stats) {
     return h('section', { class: 'home-sec' }, head(null),
-      h('div', { class: 'proj-card home-card' }, h('p', { class: 'home-empty' }, 'Run /stats in a Claude session once to see your activity here.')));
+      h('div', { class: 'proj-card home-card' }, h('p', { class: 'home-empty' },
+        stats === undefined ? 'Loading…' : 'Run /stats in a Claude session once to see your activity here.')));
   }
   const tile = (value, label, sub) => h('div', { class: 'home-tile' },
     h('div', { class: 'home-val' }, value), h('div', { class: 'home-k' }, label), sub ? h('div', { class: 'home-sub' }, sub) : null);
@@ -4284,6 +4285,7 @@ async function init() {
   pollPorts();
   pollSessions();
   pollUsage();
+  pollStats();
   pollMcp();
   pollDefinedAgents();
   setInterval(() => { const all = ++gitTick % 5 === 0; if (all || !idle() || gitTick % 2 === 0) pollGit(all); }, 4000);
