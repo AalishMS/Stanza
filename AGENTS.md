@@ -140,7 +140,7 @@ site/            the product page (static, open index.html or serve the folder; 
   - Usage token: Keychain item `Claude Code-credentials` (`security find-generic-password -w`) when the file token is
     missing or expired; a failed read is not retried for 10 minutes (no repeated access dialogs). An expired token is
     refreshed the same way as on Windows (`refreshLogin` = `claude mcp list` via the login PATH), then the Keychain is read again.
-  - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`.
+  - Window: traffic lights via `trafficLightPosition` (no `titleBarOverlay`); `body.mac` moves the padding to `#brand`; in full screen (no traffic lights) main's `win:fullscreen` sets `body.fullscreen`, which drops it.
     Windows uses `assets/icon.ico` for the window and taskbar; macOS uses `assets/icon-mac.png` (padded to Apple's 824/1024 grid so the Dock icon matches its neighbours).
     A minimal app menu (appMenu + editMenu) replaces Electron's default, whose Cmd+W/R/= would clash; the Edit roles
     give Cmd+C/V/A to xterm and inputs. VS Code opens via `open -a "Visual Studio Code"`.

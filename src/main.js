@@ -1425,6 +1425,11 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
+  // Full screen hides the traffic lights, so #brand gives back the room it keeps for them (body.fullscreen, styles.css)
+  if (IS_MAC) {
+    mainWindow.on('enter-full-screen', () => send('win:fullscreen', true));
+    mainWindow.on('leave-full-screen', () => send('win:fullscreen', false));
+  }
 }
 
 // A background session needs input or finished (the renderer decides when). Clicking brings the window to the front on
