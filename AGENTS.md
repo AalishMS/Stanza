@@ -267,6 +267,9 @@ site/            the product page (static, open index.html or serve the folder; 
   shows its open tabs first in that order (`tabRow`; a session open twice gets a row per tab), then its other sessions by
   last message (not file mtime, which Claude bumps on resume and exit). No drag-to-reorder. Labels ("Project 2", "PowerShell 2") number by `seq` (creation order), not by position, so they
   don't renumber when a tab opens.
+- **Home screen** = no active tab (`activeId` null; `body.no-tabs`, `syncHome`), not "no tabs": clicking the logo or app
+  name (`#home`, `goHome`) shows it while other tabs keep running in the sidebar. Like closing the last tab, it saves no
+  tabs for restore. No Mac branch.
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.
 - **Notifications** (`trackTab` / `notifyTab` in renderer.js, `notify` in main.js): "<project>: Needs input" or

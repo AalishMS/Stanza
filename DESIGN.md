@@ -188,7 +188,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 ### Sidebar: shadcn `Sidebar`, lightened
 - `#sidebar` is a full-height column: bg `--sidebar` (the darkest surface), width 232 by default (resizable, see below), 1 px `--sidebar-border` on the
   terminal side. Nothing inside has its own box, card, tint or border.
-- Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). While collapsed, `#brand` moves to the start
+- Top row (40 px, draggable): sidebar toggle, logo, app name (`#brand`). Logo + name are one plain
+  button (`#home`, no hover surface, focus ring only) that goes to the home screen; open tabs keep running. While collapsed, `#brand` moves to the start
   of the top bar so the toggle stays reachable. No update icons here: the single update button is in the footer.
   When an update is first seen, an **update popover** (`#update-pop`, the Popover recipe, 300 px) opens above the footer's
   update button (bottom-left corner of the window while the sidebar is collapsed):

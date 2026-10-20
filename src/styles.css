@@ -227,6 +227,9 @@ button { font: inherit; color: inherit; }
 /* 1px ring on the tile's rounded edge (22% = the icon's corner radius), so the black tile still reads on the dark theme */
 #brand .logo img, .welcome-inner .big-logo img { border-radius: 22%; box-shadow: 0 0 0 1px var(--border); }
 .brand-name { font-weight: 500; white-space: nowrap; }
+/* logo + name = Home (goHome): a plain button, no hover surface, so the row still reads as the app's title */
+#home { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; -webkit-app-region: no-drag; border-radius: var(--radius-sm); }
+#home:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 #topbar #brand { padding: 0; }
 /* macOS: window buttons (traffic lights) sit at the top-left, where #brand always is, instead of the top-right */
 body.mac #topbar { padding-right: 8px; }

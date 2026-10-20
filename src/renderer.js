@@ -1195,6 +1195,19 @@ function activate(id) {
   saveTabs();
 }
 
+/** Logo / app name: back to the home screen. Open tabs keep running and stay in the sidebar. */
+function goHome() {
+  if (settingsOpen) toggleSettings(false);
+  if (!activeId) return;
+  activeId = null;
+  document.activeElement?.blur(); // keys must not reach the hidden terminal
+  syncVisible();
+  renderAll();
+  saveTabs();
+  pollMcp(); // the user-level lists, as in closeTab
+  pollDefinedAgents();
+}
+
 /**
  * Fit the terminal to its box, one row short if the renderer's rounded cell height would make the screen taller than
  * the box (it would cover the status bar). Resizes once, straight to the final size, and only when it changed: every
@@ -3485,11 +3498,12 @@ function setDocPct(pct) {
 
 /** Shown in the layout: pinned (ui.sidebar), or on the home screen, which always shows it (a collapsed sidebar only applies with a tab open). */
 let restoring = false; // saved tabs are being reopened at launch: not the home screen, so the sidebar doesn't flash in
-const sidebarShown = () => ui.sidebar || (tabs.size === 0 && !restoring);
+const sidebarShown = () => ui.sidebar || (!activeId && !restoring);
 
-/** Home screen <-> tabs: `no-tabs`, and the sidebar comes back into the layout (or leaves it) when that changes. */
+/** Home screen (no active tab; others may still run in the background) <-> tabs: `no-tabs`, and the sidebar comes back
+ * into the layout (or leaves it) when that changes. */
 function syncHome() {
-  document.body.classList.toggle('no-tabs', tabs.size === 0);
+  document.body.classList.toggle('no-tabs', !activeId);
   if (document.body.classList.contains('sidebar-collapsed') === sidebarShown()) placeBrand();
 }
 
@@ -4119,6 +4133,7 @@ function wireGlobalEvents() {
   $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
   $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
+  $('#home').addEventListener('click', goHome);
   $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
   $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
   $('#split-tab').addEventListener('click', () => (curSplit() ? unsplit() : splitHere()));
