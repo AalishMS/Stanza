@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Stanza: all your Claude Code sessions in one window</title>
-  <meta name="description" content="Stanza is a free desktop app around the real Claude Code CLI: your projects and their sessions, split panes, live git status, and a panel for context, MCPs, subagents and running servers.">
+  <meta name="description" content="Stanza is a free desktop app around the real Claude Code CLI: your projects and their sessions, split panes, live git status, a built-in Markdown viewer and editor, and a panel for context, MCPs, subagents and running servers.">
   <meta name="theme-color" content="#0a0a0a">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Stanza: all your Claude Code sessions in one window">
-  <meta property="og:description" content="A free desktop app around the real claude CLI. Projects and their sessions, split panes, git status, and a panel for context, MCPs, subagents and running servers.">
+  <meta property="og:description" content="A free desktop app around the real claude CLI. Projects and their sessions, split panes, git status, a built-in Markdown viewer and editor, and a panel for context, MCPs, subagents and running servers.">
   <meta property="og:image" content="assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/png" href="assets/icon.png">
@@ -69,7 +69,7 @@
         <h1 class="hero__title">All your Claude Code sessions in one <span class="nowrap">window<span class="cursor" aria-hidden="true"></span></span></h1>
         <p class="hero__lead">
           Every tab is a genuine <code>claude</code> session. Stanza adds what a terminal window doesn't have: your
-          projects and their past sessions, split panes, live git status, and a panel that shows what each session is
+          projects and their past sessions, split panes, live git status, a built-in Markdown viewer and editor, and a panel that shows what each session is
           doing.
         </p>
 
@@ -131,7 +131,7 @@
         </div>
         <div class="demo__ctl">
           <div class="switch" id="hero-tabs" role="group" aria-label="Screen of the app"></div>
-          <p class="hero__hint">Click around, drag the split, answer a prompt.</p>
+          <p class="hero__hint">Click around, edit Markdown, drag the split, answer a prompt.</p>
         </div>
       </div>
       <div class="demo__frame">
@@ -155,7 +155,8 @@
               <button type="button" class="tour__pill" data-go="1"><span>01</span>Projects<i></i></button>
               <button type="button" class="tour__pill" data-go="2"><span>02</span>Split view<i></i></button>
               <button type="button" class="tour__pill" data-go="3"><span>03</span>Session panel<i></i></button>
-              <button type="button" class="tour__pill" data-go="4"><span>04</span>Make it yours<i></i></button>
+              <button type="button" class="tour__pill" data-go="4"><span>04</span>Markdown<i></i></button>
+              <button type="button" class="tour__pill" data-go="5"><span>05</span>Make it yours<i></i></button>
             </nav>
           </div>
 
@@ -210,7 +211,7 @@
                 <p>
                   The right panel follows the tab you're in: how full the context window is, which MCP servers are
                   connected, which subagents ran with which model and prompt, the dev servers the session started
-                  (click to copy the URL), and the images it was given.
+                  (click to copy the URL), the Markdown files it wrote or edited, and the images it was given.
                 </p>
               </div>
               <div class="window window--fade tour__inline" data-screen="panel" data-crop="720,0,560,420" role="img"
@@ -220,6 +221,28 @@
             <article class="tour__step" data-step="4">
               <div class="tour__head">
                 <p class="tour__n">04</p>
+                <h3>Read the plan. Edit it here.</h3>
+              </div>
+              <div class="tour__body">
+                <p>
+                  <kbd data-win="Ctrl" data-mac="⌘">Ctrl</kbd>+click a Markdown path in Claude's output, or pick a file
+                  from Docs. It opens in the right sidebar, which widens to fit the page. The preview updates live as
+                  the file changes, with tables, task lists and local images.
+                </p>
+                <p>
+                  Use the pencil to edit the raw Markdown. Changes save automatically as you type;
+                  <kbd data-win="Ctrl+S" data-mac="⌘S">Ctrl+S</kbd> saves at once. Switch between the session panel and
+                  open files with the pill below. Each project keeps its own documents.
+                </p>
+                <p class="tour__try">Try the Markdown tab in the live demo above.</p>
+              </div>
+              <div class="window tour__inline" data-screen="markdown" data-crop="768,34,512,641" role="img"
+                   aria-label="Markdown preview beside a Claude session, with an edit button and document tabs"></div>
+            </article>
+
+            <article class="tour__step" data-step="5">
+              <div class="tour__head">
+                <p class="tour__n">05</p>
                 <h3>Make it yours.</h3>
               </div>
               <div class="tour__body">
@@ -241,7 +264,8 @@
               <div class="window tour__frame" data-step="1" data-screen="new-menu" data-focus="4,38,362,633" aria-hidden="true"></div>
               <div class="window tour__frame" data-step="2" data-screen="split-working" data-focus="232,38,1044,633" aria-hidden="true"></div>
               <div class="window tour__frame" data-step="3" data-screen="panel" data-focus="1046,38,230,633" aria-hidden="true"></div>
-              <div class="window tour__frame" data-step="4" data-screen="settings-appearance" data-focus="285,41,700,543" data-editable
+              <div class="window tour__frame" data-step="4" data-screen="markdown" data-focus="770,38,506,633" aria-hidden="true"></div>
+              <div class="window tour__frame" data-step="5" data-screen="settings-appearance" data-focus="285,41,700,543" data-editable
                    role="group" aria-label="Settings preview with theme, accent and text size. Its controls work."></div>
               <div class="tour__spot" aria-hidden="true"></div>
             </div>
@@ -262,7 +286,7 @@
         </div>
         <div>
           <dt>Clickable file paths</dt>
-          <dd><kbd data-win="Ctrl" data-mac="⌘">Ctrl</kbd>+click <code>src/main.js:123</code> in Claude's output to open VS Code at that line. Images, videos and PDFs open in their default app.</dd>
+          <dd><kbd data-win="Ctrl" data-mac="⌘">Ctrl</kbd>+click <code>src/main.js:123</code> in Claude's output to open VS Code at that line. Markdown opens in the built-in viewer and editor. Images, videos and PDFs open in their default app.</dd>
         </div>
         <div>
           <dt>Notifications</dt>
@@ -408,6 +432,7 @@ npm start</code></pre>
 <script src="js/mock/screens/terminal.js"></script>
 <script src="js/mock/screens/needs-input.js"></script>
 <script src="js/mock/screens/panel.js"></script>
+<script src="js/mock/screens/markdown.js"></script>
 <script src="js/mock/build.js"></script>
 <script src="js/page/look.js"></script>
 <script src="js/page/install.js"></script>

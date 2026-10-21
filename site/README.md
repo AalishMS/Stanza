@@ -5,7 +5,7 @@ window in its own section and a pinned, scrolling feature tour. Static, no build
 `index.html`. No third-party requests (system fonts, no CDN). Not part of the packaged app.
 
 ```
-index.html          the page (all copy lives here; claims come from the repo's README and CLAUDE.md)
+index.html          the page (all copy lives here; claims come from the repo's README and AGENTS.md)
 assets/             icon.png, og.png (social preview, still the old page's)
 css/
   base.css          tokens, reset, type, code/kbd, the install "term", the switch
@@ -17,7 +17,7 @@ js/                 plain scripts sharing one namespace, window.Stanza (load ord
   util.js, model.js namespace, helpers; hero screens, accents and the mock's state
   mock/             the app's UI as markup (the accent list reads model.js): build.js (frame), sidebars,
                     overlays.js (subagent dialog, image lightbox, "Needs input" toast, and their data), screens/
-                    (one file per screen: session, split, terminal, needs-input, panel, home, settings)
+                    (one file per screen: session, split, terminal, needs-input, panel, markdown, home, settings)
   page/             look (mock theme, accent, text size), install (OS switch, copy), windows (scale/crop),
                     hero (live window), tour (pinned stage), actions (clicks in the mock), ticker,
                     fx (hero mark parallax, nav backdrop, fade-ins)
@@ -38,7 +38,9 @@ model), which `build.js` reads. The live window also takes input: the split's di
 saved as `state.splitRatio` on release), the Terminal tab's prompt runs Vite's keys and a few canned PowerShell
 commands (`S.mock.shell` in `screens/terminal.js`), and the permission prompt on Needs input answers to clicks or to
 ↑/↓/Enter/Esc while the window has focus (`#hero-window` has `tabindex="-1"`). Picking a tab in the switch replays its
-screen (prompt, toast, dialog reset). All screen images are inline SVG or `assets/icon.png`, so there are still no
+screen (prompt, toast, dialog reset). The Markdown tab opens a widened reader; its pencil toggles a raw-text editor.
+Demo edits stay in memory until reload, and the preview handles the sample's headings, lists and quotes. The desktop
+app uses its own full Markdown parser and autosaves to disk. Docs rows in the session panel open this demo too. All screen images are inline SVG or `assets/icon.png`, so there are still no
 requests.
 
 The tour has two copies of each picture. On wide, tall screens (`min-width: 901px and min-height: 640px`, with JS) the

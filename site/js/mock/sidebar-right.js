@@ -42,6 +42,7 @@
     const meta = S.model.screenOf(screen);
     if (meta.kind === 'split') return ''; // the app hides it while a split pane is narrow (autoRside)
     if (ctx.live && !state.rightSidebarOpen) return '';
+    if (screen === 'markdown') return S.mock.markdownSidebar(ctx);
 
     const isClaude = meta.kind === 'claude';
     const noProject = meta.kind === 'home' || meta.kind === 'settings';
@@ -128,6 +129,9 @@
         ${mcpSection}
         ${subagentSection}
         ${runningSection}
+        ${noProject ? '' : section(ctx, 'docs', 'Docs', '1', `
+          <button type="button" data-act="openDoc" class="mock-doc-row">README.md</button>
+        `)}
         ${imageSection}
       </aside>
     `;

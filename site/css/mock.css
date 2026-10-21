@@ -15,6 +15,32 @@
 .stanza-root kbd { font-family: inherit; }
 .stanza-root table { border-collapse: collapse; }
 
+/* Markdown reader, matching the app's widened right sidebar and bottom tab pill. */
+.mock-doc { width: 512px; flex-shrink: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border-color); background: var(--bg-right); color: var(--text-primary); font-size: 13px; }
+.mock-doc-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px 8px; font-weight: 600; }
+.stanza-root .mock-doc-head button { padding: 6px; border-radius: 6px; }
+.mock-doc-head button:hover { background: var(--bg-hover-row); }
+.mock-doc-path { padding: 0 20px 12px; color: var(--text-muted); font-size: 11px; }
+.mock-doc-page { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 24px 20px; line-height: 1.65; user-select: text; }
+.stanza-root .mock-doc-page h1 { font-size: 26px; line-height: 1.25; font-weight: 600; margin-bottom: 16px; }
+.stanza-root .mock-doc-page h2 { font-size: 18px; font-weight: 600; margin: 20px 0 8px; }
+.stanza-root .mock-doc-page p { margin-bottom: 10px; }
+.stanza-root .mock-doc-page .mock-doc-bullet { margin: 3px 0 3px 8px; }
+.mock-doc-page blockquote { margin: 16px 0; padding-left: 12px; border-left: 3px solid var(--border-color); color: var(--text-muted); }
+.mock-doc-editor { flex: 1; min-height: 0; resize: none; margin: 0 20px 12px; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-main); color: var(--text-primary); font: 13px/1.65 var(--font-mono); }
+.mock-doc-note { padding: 8px 20px; color: var(--text-muted); font-size: 10px; }
+.mock-doc-tabs { display: flex; justify-content: center; gap: 4px; padding: 8px 12px 14px; }
+.stanza-root .mock-doc-tabs button { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; background: var(--bg-hover-row); color: var(--text-muted); font-size: 11px; }
+.stanza-root .mock-doc-tabs [aria-current] { background: var(--bg-active-row); color: var(--text-primary); }
+.mock-doc-session { flex: 1; min-width: 0; padding: 24px 16px; background: var(--bg-main); color: var(--text-primary); font: 14px/1.6 var(--font-mono); }
+.stanza-root .mock-doc-session p { margin-bottom: 14px; }
+.mock-doc-prompt { padding: 4px 8px; background: var(--bg-prompt-bar); }
+.mock-doc-output { color: var(--text-muted); font-size: 12px; }
+.stanza-root .mock-doc-link { color: var(--text-code); text-decoration: underline; margin-bottom: 16px; }
+.stanza-root .mock-doc-row { display: block; width: 100%; padding: 4px 14px; border-radius: 6px; color: var(--text-primary); font-size: 11.5px; }
+.mock-doc-row:hover { background: var(--bg-hover-row); }
+.mock-doc button:focus-visible, .mock-doc-editor:focus-visible { outline: 2px solid var(--stanza-accent); outline-offset: 2px; }
+
 /* Light and dark tokens. The accent follows the page's accent picker. */
 .stanza-root.theme-light {
   --bg-main: #ffffff;

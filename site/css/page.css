@@ -269,7 +269,7 @@
 .tour__inline { width: min(100%, calc(500px * var(--w) / var(--h))); margin-top: 10px; }
 
 @media (min-width: 901px) and (min-height: 640px) {
-  .js .tour { height: calc(100svh - 56px + 4 * 35vh); }
+  .js .tour { height: calc(100svh - 56px + 5 * 35vh); }
   .js .tour__pin { position: sticky; top: 56px; height: calc(100svh - 56px); }
   .js .tour__stage { display: flex; flex-direction: column; height: 100%; padding: 22px 0 28px; }
   .js .tour__top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; }

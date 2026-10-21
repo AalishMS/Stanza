@@ -20,6 +20,8 @@
   const ACTIONS = {
     noop: () => {},
     selectView: screen => S.hero.show(screen),
+    openDoc: () => { state.rightSidebarOpen = true; S.hero.show('markdown'); },
+    toggleDocEdit: () => { state.docEditing = !state.docEditing; S.hero.draw(); },
     toggleLeftSidebar: () => { state.leftSidebarOpen = !state.leftSidebarOpen; S.hero.draw(); },
     toggleRightSidebar: () => { state.rightSidebarOpen = !state.rightSidebarOpen; S.hero.draw(); },
     toggleFolder: key => { toggle(state.collapsedFolders, key); S.hero.draw(); },
@@ -85,7 +87,10 @@
     const { target } = event;
     if (!(target instanceof Element)) return;
 
-    if (event.key === 'Escape' && state.dialog && target.closest('#hero-window')) {
+    if (target.dataset.field === 'markdown' && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      state.docText = target.value;
+    } else if (event.key === 'Escape' && state.dialog && target.closest('#hero-window')) {
       state.dialog = null;
       S.hero.draw();
     } else if (promptKey(event)) {
@@ -108,6 +113,10 @@
   }
 
   function onInput(event) {
+    if (event.target.dataset.field === 'markdown') {
+      state.docText = event.target.value;
+      return;
+    }
     if (event.target.dataset.field !== 'search') return;
     state.searchQuery = event.target.value;
     S.hero.draw();
