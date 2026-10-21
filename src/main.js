@@ -568,8 +568,8 @@ function diffStat(cwd) {
 
 /**
  * The whole diff: { ok, root, files: parseDiff's, then untracked files (`untracked`, their text as one added hunk, or
- * `binary` / `big` (bytes) / `skip`), sorted by path, added, removed, more: untracked files left out }, or { same: true }
- * when it is still the one the renderer has (`have` = its id).
+ * `binary` / `big` (bytes) / `skip`), sorted by path, each with an `id` of its contents, added, removed, more: untracked
+ * files left out }, or { same: true } when it is still the one the renderer has (`have` = its id).
  */
 async function gitDiff(cwd, have) {
   const value = await diffCached('diff', cwd, async (root, base, hash) => {
@@ -592,6 +592,8 @@ async function gitDiff(cwd, have) {
       files.push(f);
     }
     files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    // each file's own id: the renderer keeps a file's section on the page while it stays the same
+    for (const f of files) f.id = require('crypto').createHash('sha1').update(JSON.stringify(f)).digest('hex').slice(0, 16);
     const sum = (k) => files.reduce((n, f) => n + f[k], 0);
     return { ok: true, hashed: true, root, files, added: sum('added'), removed: sum('removed'), more: Math.max(0, extra.length - UNTRACKED_MAX) };
   });

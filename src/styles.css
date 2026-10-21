@@ -855,7 +855,8 @@ body.settings-open #settings { display: block; }
 .stat-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 .stat-btn:focus-visible { outline: 0; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 .diff-sum .d-add, .diff-sum .d-del { font-family: var(--mono); }
-.diff-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-bottom: 72px; outline: 0; }
+/* relative: the files' offsetTop is measured from here (renderer.js diffAnchor, a fold that keeps its header in place) */
+.diff-body { position: relative; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-bottom: 72px; outline: 0; }
 .diff-file { border-bottom: 1px solid var(--border); }
 /* the file's header sticks to the top while its lines scroll by; opaque, so the lines pass under it */
 .diff-fh {

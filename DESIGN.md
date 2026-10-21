@@ -319,19 +319,23 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 
 ### Changes page (`#rside-diff`)
 The project's uncommitted changes as a unified diff per file, at the markdown page's width (same slide, same resize).
-- Head: the Markdown page's head: "Changes" over `branch · 4 files +120 −30` (counts in `--mono`, `--success` / `--destructive`),
-  then ghost `icon sm` buttons: Collapse all / Expand all (`foldAll` / `unfoldAll` chevrons, with 2+ files that have lines) and ×.
+- Head: the Markdown page's head: "Changes" over `branch · 4 files +120 −30` (the branch as the status bar shows it, `@abc1234`
+  when detached; counts in `--mono`, `--success` / `--destructive`), then ghost `icon sm` buttons: Collapse all / Expand all
+  (`foldAll` / `unfoldAll` chevrons, with 2+ files that have lines) and ×.
+- Live: Claude's edits update the page in place. Only the edited files are redrawn, and what is at the top of the view
+  stays there, so reading (or a selection in another file) is never interrupted.
 - Files stacked in path order, each a 34 px header row that sticks to the top while its lines scroll by (opaque
   `--background`, a 1 px `--border` line under it; hover `--accent` 50 %): a 14 px chevron (turned down while open), the
   status letter (11 px / 600 `--mono`: M `--warning`, A and U (new, untracked) `--success`, D `--destructive`, R muted),
   the folder in `--faint` and the file name (12 px / 500; a rename shows `old → new`), `+n −n` (11 px mono), and a ghost
-  `code` button (Open in VS Code at the first change; a 24 px gap for a deleted or binary file). Clicking the row folds it.
-  Lockfiles and files over 400 changed lines start folded. A file without lines (binary, too large, mode change, pure
+  `code` button (Open in VS Code at the first change; a 24 px gap for a deleted or binary file). Clicking the row folds it;
+  folding a header stuck at the top keeps it there (the view moves to it, not into the next file). Lockfiles and files
+  over 400 changed lines start folded. A file without lines (binary, too large, mode change, pure
   rename, empty) is the header alone, with an 11 px `--faint` note ("binary", "5.4 MB, not shown") and no chevron.
 - Lines: 12 px / 18 px `--mono`, wrapped (`pre-wrap`), two line-number gutters (11 px `--faint`, right-aligned; a click
   opens the file at that line, hover `--foreground`), a sign column (`+` `--success`, `-` `--destructive`, not selectable).
   Added rows `--success` 12 %, removed `--destructive` 12 % (gutters 8 % more), context text `--muted-foreground`. The
-  changed part of a replaced line is a `mark` at 30 %. Hunk headers (`@@ -12,7 +12,8 @@` and the function, muted) are a
+  changed words of a replaced line are `mark`s at 30 %, one per separate edit (edits under 3 characters apart share one). Hunk headers (`@@ -12,7 +12,8 @@` and the function, muted) are a
   20 px `--muted` 50 % strip; "No newline at end of file" is an 11 px italic `--faint` row.
 - Empty and error states: centered 72 px down, a 20 px `--faint` icon (`check` for "No uncommitted changes", `branch` for
   "Not a git repository" or a failure), a 13 px / 500 title, a 12 px muted line.

@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels, inlineChange, linePairs -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels, inlineMarks, linePairs -- lib/ui.js */
 /* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
@@ -3588,8 +3588,9 @@ function docRows(tab, list) {
 // sidebar beside the markdown tabs (docsBy[project].diff, active = DIFF_TAB), at their width. Opened by the top bar's
 // +/- button, the status bar's change count or the showChanges key; when one of them had to open the sidebar, closing
 // the tab closes it again (diffPinned). Main runs git (git:diff, git:diffstat) and caches each result under the status
-// output and the changed files' mtimes, so polling it after every git status poll is cheap; the page is rebuilt only
-// when the diff changed (its id), keeping its scroll and the files folded by hand. Text only becomes text nodes.
+// output and the changed files' mtimes, so polling it after every git status poll is cheap. When the diff changed (its
+// id), only the files whose own id changed are rebuilt (diffEls), so a selection elsewhere survives Claude's edits, and
+// the file at the top of the view stays there (diffAnchor). Text only becomes text nodes.
 
 const DIFF_TAB = -2; // docsBy[project].active while the Changes tab shows
 const DIFF_FOLD_AT = 400; // changed lines: a bigger file starts folded
@@ -3597,8 +3598,9 @@ const LOCK_RE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|p
 const DIFF_STATUS = { M: 'Modified', A: 'Added', D: 'Deleted', R: 'Renamed', U: 'New file, not tracked yet' };
 const diffBy = new Map(); // project path -> git:diff result, while its Changes tab is open
 const statBy = new Map(); // project path -> { files, added, removed } for the top bar's button
-const diffFolds = new Map(); // project path -> Map(file path -> folded) for the files folded or unfolded by hand
+const diffFolds = new Map(); // project path -> Map(file path -> folded) for every file shown (runtime only)
 const diffScroll = new Map(); // project path -> scroll position of its page (runtime only)
+const diffEls = new Map(); // file id -> its section, for the project on the page (diffOn)
 let diffOn = null; // the project whose page is in #rside-diff
 let diffPinned = null; // the project whose Changes opened the closed sidebar: closing that tab closes it again
 
@@ -3710,22 +3712,57 @@ function renderDiff(force = false) {
   const p = docProject();
   if (!p || host.hidden) return;
   const r = diffBy.get(p.path);
-  const key = JSON.stringify([p.path, r ? r.id || r.error || !!r.noRepo : null, git[p.path]?.branch]);
+  const key = JSON.stringify([p.path, r ? r.id || r.error || !!r.noRepo : null, git[p.path]?.branch, git[p.path]?.detached]);
   if (!force && key === lastDiffKey) return;
   lastDiffKey = key;
-  const same = diffOn === p.path;
-  if (!same) keepDiffScroll();
-  const top = same ? diffBody()?.scrollTop || 0 : diffScroll.get(p.path) || 0;
+  const same = diffOn === p.path && !!diffBody();
+  if (!same) { keepDiffScroll(); diffEls.clear(); }
   diffOn = p.path;
+  const body = same ? diffBody() : h('div', { class: 'diff-body' });
+  const anchor = same ? diffAnchor(body) : null;
   const files = r?.ok ? r.files : [];
-  const body = h('div', { class: 'diff-body' },
-    !r ? h('div', { class: 'rnote' }, 'Loading…')
+  if (files.length) {
+    const els = files.map((f) => diffEls.get(f.id) || diffFile(p, r.root, f));
+    diffEls.clear();
+    files.forEach((f, i) => diffEls.set(f.id, els[i]));
+    if (r.more) els.push(h('div', { class: 'diff-msg' }, `${r.more} more new file${r.more === 1 ? '' : 's'} not shown.`));
+    // Only the files that changed are swapped: moving or re-adding an unchanged one would drop a selection in it.
+    const keep = new Set(els);
+    for (const el of [...body.children]) if (!keep.has(el)) el.remove();
+    let at = body.firstChild;
+    for (const el of els) if (el === at) at = at.nextSibling; else body.insertBefore(el, at);
+  } else {
+    diffEls.clear();
+    const branch = diffBranch(p);
+    body.replaceChildren(!r ? h('div', { class: 'rnote' }, 'Loading…')
       : r.noRepo ? diffEmpty('branch', 'Not a git repository', 'This tab shows the uncommitted changes of a git repository.')
       : !r.ok ? diffEmpty('branch', 'Could not read the changes', r.error || '')
-      : !files.length ? diffEmpty('check', 'No uncommitted changes', `Everything is committed${git[p.path]?.branch ? ` on ${git[p.path].branch}` : ''}.`)
-      : [...files.map((f) => diffFile(p, r, f)), r.more ? h('div', { class: 'diff-msg' }, `${r.more} more new file${r.more === 1 ? '' : 's'} not shown.`) : null]);
-  host.replaceChildren(diffHead(p, r), body);
-  body.scrollTop = top;
+      : diffEmpty('check', 'No uncommitted changes', `Everything is committed${branch ? ` on ${branch}` : ''}.`));
+  }
+  if (same) host.firstChild.replaceWith(diffHead(p, r));
+  else host.replaceChildren(diffHead(p, r), body);
+  if (!same) body.scrollTop = diffScroll.get(p.path) || 0;
+  else if (anchor) toAnchor(body, anchor);
+}
+
+/** The file at the top of the page's view and how far down it is scrolled, to keep there when files above it change. */
+function diffAnchor(body) {
+  const top = body.scrollTop;
+  if (!top) return null; // at the top it stays at the top, so a new first file shows
+  for (const el of body.children) if (el.dataset.path && el.offsetTop + el.offsetHeight > top) return { path: el.dataset.path, off: top - el.offsetTop };
+  return null;
+}
+
+/** Back to the anchor's file; to its header when the old offset no longer fits in it (folded, or it shrank). */
+function toAnchor(body, a) {
+  const el = [...body.children].find((x) => x.dataset.path === a.path);
+  if (el) body.scrollTop = el.offsetTop + (a.off < el.offsetHeight ? a.off : 0);
+}
+
+/** The branch as the status bar shows it (`@abc1234` when detached). */
+function diffBranch(p) {
+  const info = git[p.path];
+  return info?.branch ? `${info.detached ? '@' : ''}${info.branch}` : '';
 }
 
 function diffEmpty(icon, title, line) {
@@ -3734,7 +3771,7 @@ function diffEmpty(icon, title, line) {
 
 function diffHead(p, r) {
   const files = r?.ok ? r.files : [];
-  const branch = git[p.path]?.branch;
+  const branch = diffBranch(p);
   const foldable = files.filter((f) => !diffNote(f));
   const anyOpen = anyUnfolded(p, foldable);
   return h('div', { class: 'doc-head' },
@@ -3748,7 +3785,10 @@ function diffHead(p, r) {
     h('button', { class: 'btn ghost icon sm', title: 'Close', onclick: () => closeDiff(p) }, ico('x')));
 }
 
-/** Folded by hand, else by default: lockfiles and big changes start folded. */
+/**
+ * As the file was last shown, else by default: lockfiles and big changes start folded. A file keeps its state from then
+ * on (diffFile records it), so one being read never folds itself when Claude's edits take it past DIFF_FOLD_AT.
+ */
 function diffFolded(p, f) {
   const set = diffFolds.get(p.path);
   if (set?.has(f.path)) return set.get(f.path);
@@ -3764,10 +3804,20 @@ function setFold(p, f, folded) {
 
 function foldAll(p, files, fold) {
   for (const f of files) setFold(p, f, fold);
+  diffEls.clear(); // every file is rebuilt with its new state; the one at the top of the view stays there
   renderDiff(true);
 }
 
-const diffAbs = (r, rel) => `${r.root}${IS_MAC ? '/' : '\\'}${IS_MAC ? rel : rel.replace(/\//g, '\\')}`;
+/** The head's Collapse all / Expand all, after a file was folded by hand. */
+function syncFoldAll(p) {
+  const btn = $('#rside-diff .diff-foldall');
+  if (!btn) return;
+  const anyOpen = anyUnfolded(p, (diffBy.get(p.path)?.files || []).filter((f) => !diffNote(f)));
+  btn.title = anyOpen ? 'Collapse all' : 'Expand all';
+  btn.replaceChildren(ico(anyOpen ? 'foldAll' : 'unfoldAll'));
+}
+
+const diffAbs = (root, rel) => `${root}${IS_MAC ? '/' : '\\'}${IS_MAC ? rel : rel.replace(/\//g, '\\')}`;
 /** The first new-side line a file's diff changes, to open it there. */
 function firstChange(f) {
   const hk = f.hunks[0];
@@ -3787,15 +3837,18 @@ function diffNote(f) {
   return f.mode ? `mode ${f.mode}` : f.status === 'R' ? 'renamed' : 'empty';
 }
 
-/** One file: a sticky header (click folds it) over its lines, built when first unfolded. A file without lines is just the header. */
-function diffFile(p, r, f) {
+/**
+ * One file (`root` = its repo): a sticky header (click folds it) over its lines, built when first unfolded. A file
+ * without lines is just the header.
+ */
+function diffFile(p, root, f) {
   const st = f.untracked ? 'U' : f.status;
   const name = f.path.split('/').pop();
   const dir = f.path.slice(0, f.path.length - name.length);
   const note = diffNote(f);
   // Nothing to open for a deleted file or a folder, and a binary one is never started from here (a changed .exe would run).
   const openBtn = f.status !== 'D' && !f.binary && !f.dir
-    ? h('button', { class: 'btn ghost icon sm', title: 'Open in VS Code', onclick: (e) => { e.stopPropagation(); api.openFile(diffAbs(r, f.path), firstChange(f)); } }, ico('code'))
+    ? h('button', { class: 'btn ghost icon sm', title: 'Open in VS Code', onclick: (e) => { e.stopPropagation(); api.openFile(diffAbs(root, f.path), firstChange(f)); } }, ico('code'))
     : h('span', { class: 'diff-gap' }); // the notes and counts stay aligned
   const nameEl = h('span', { class: 'diff-name' },
     f.old ? [h('span', { class: 'diff-dir' }, f.old), h('span', { class: 'diff-arrow' }, '→')] : null,
@@ -3803,24 +3856,23 @@ function diffFile(p, r, f) {
     h('span', { class: 'diff-base' }, name));
   const title = `${f.old ? `${f.old} → ` : ''}${f.path}\n${DIFF_STATUS[st]}`;
   if (note) {
-    return h('section', { class: 'diff-file' }, h('div', { class: 'diff-fh still', title },
+    return h('section', { class: 'diff-file', 'data-path': f.path }, h('div', { class: 'diff-fh still', title },
       h('span', { class: 'ico' }), h('span', { class: `diff-st st-${st}` }, st), nameEl, h('span', { class: 'diff-note' }, note), openBtn));
   }
   let folded = diffFolded(p, f);
+  setFold(p, f, folded);
   let lines = null;
-  const sec = h('section', { class: `diff-file${folded ? ' folded' : ''}` });
+  const sec = h('section', { class: `diff-file${folded ? ' folded' : ''}`, 'data-path': f.path });
   const toggle = () => {
+    const body = diffBody();
+    const stuck = body && sec.offsetTop < body.scrollTop; // folded from its header stuck at the top: that header stays there
     folded = !folded;
     setFold(p, f, folded);
-    if (!folded && !lines) sec.append((lines = diffLines(r, f)));
+    if (!folded && !lines) sec.append((lines = diffLines(root, f)));
     sec.classList.toggle('folded', folded);
     head.setAttribute('aria-expanded', String(!folded));
-    const fold = $('#rside-diff .diff-foldall'); // Collapse all <-> Expand all
-    if (fold) {
-      const anyOpen = anyUnfolded(p, r.files.filter((x) => !diffNote(x)));
-      fold.title = anyOpen ? 'Collapse all' : 'Expand all';
-      fold.replaceChildren(ico(anyOpen ? 'foldAll' : 'unfoldAll'));
-    }
+    if (stuck) body.scrollTop = sec.offsetTop;
+    syncFoldAll(p);
   };
   const head = h('div', {
     class: 'diff-fh', role: 'button', tabindex: '0', 'aria-expanded': String(!folded), title,
@@ -3832,12 +3884,12 @@ function diffFile(p, r, f) {
   h('span', { class: 'diff-n' }, f.added ? h('span', { class: 'd-add' }, `+${f.added}`) : null, f.removed ? h('span', { class: 'd-del' }, `−${f.removed}`) : null),
   openBtn);
   sec.append(head);
-  if (!folded) sec.append((lines = diffLines(r, f)));
+  if (!folded) sec.append((lines = diffLines(root, f)));
   return sec;
 }
 
 /** A file's hunks: line numbers (old, new; a click on one opens the file there), the code, the changed part of a replaced line marked. */
-function diffLines(r, f) {
+function diffLines(root, f) {
   const box = h('div', { class: 'diff-lines' });
   const count = (hk, c) => hk.lines.filter((l) => l[0] === ' ' || l[0] === c).length;
   const last = Math.max(...f.hunks.map((hk) => Math.max(hk.o + count(hk, '-'), hk.n + count(hk, '+'))));
@@ -3848,14 +3900,14 @@ function diffLines(r, f) {
     if (f.status === 'M' || f.status === 'R') {
       rows.push(h('div', { class: 'dh' }, `@@ -${hk.o},${count(hk, '-')} +${hk.n},${count(hk, '+')} @@`, hk.head ? h('span', { class: 'dh-ctx' }, hk.head) : null));
     }
-    const marks = new Map(); // line index -> [from, to) of its changed part
+    const marks = new Map(); // line index -> the [from, to) ranges of its changed parts
     for (const [i, j] of linePairs(hk.lines)) {
       const a = hk.lines[i].slice(1);
       const b = hk.lines[j].slice(1);
-      const ch = a.length + b.length < 4000 && inlineChange(a, b);
+      const ch = a.length + b.length < 4000 && inlineMarks(a, b);
       if (!ch) continue;
-      if (ch.pre < a.length - ch.suf) marks.set(i, [ch.pre, a.length - ch.suf]);
-      if (ch.pre < b.length - ch.suf) marks.set(j, [ch.pre, b.length - ch.suf]);
+      if (ch.a.length) marks.set(i, ch.a);
+      if (ch.b.length) marks.set(j, ch.b);
     }
     let o = hk.o;
     let n = hk.n;
@@ -3863,8 +3915,10 @@ function diffLines(r, f) {
       const c = l[0];
       if (c === '\\') { rows.push(h('div', { class: 'dnote' }, l.slice(2))); return; }
       const text = l.slice(1);
-      const m = marks.get(i);
-      const code = m ? [text.slice(0, m[0]), h('mark', {}, text.slice(m[0], m[1])), text.slice(m[1])] : text;
+      const code = [];
+      let from = 0;
+      for (const [s, e] of marks.get(i) || []) { code.push(text.slice(from, s), h('mark', {}, text.slice(s, e))); from = e; }
+      code.push(text.slice(from));
       const cls = c === '+' ? 'add' : c === '-' ? 'del' : 'ctx';
       const at = Math.max(1, n); // where a click opens the file: the new side
       rows.push(h('div', { class: `dl ${cls}`, 'data-n': open ? String(at) : null },
@@ -3879,7 +3933,7 @@ function diffLines(r, f) {
   box.append(...rows);
   box.addEventListener('click', (e) => {
     const row = e.target.closest('.ln') && e.target.closest('.dl[data-n]');
-    if (row) api.openFile(diffAbs(r, f.path), +row.dataset.n);
+    if (row) api.openFile(diffAbs(root, f.path), +row.dataset.n);
   });
   return box;
 }

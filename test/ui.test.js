@@ -337,7 +337,35 @@ test('inlineChange: whole words replaced, inserted text placed after a space or 
   assert.deepEqual(mid('ab', 'abab'), ['', 'ab']);
 });
 
-test('linePairs: removed runs followed by as many added lines', () => {
-  assert.deepEqual(ui.linePairs([' a', '-b', '-c', '+B', '+C', ' d', '-e', '+E', '+F', '-g', '+G']), [[1, 3], [2, 4], [9, 10]]);
-  assert.deepEqual(ui.linePairs(['+a', '-b', ' c']), []);
+test('inlineMarks: each changed word run of a replaced line, near ones joined', () => {
+  const marks = (a, b) => { const m = ui.inlineMarks(a, b); return m && [m.a.map(([s, e]) => a.slice(s, e)), m.b.map(([s, e]) => b.slice(s, e))]; };
+  assert.deepEqual(marks("const config = { port: 3000, host: 'localhost', debug: false };", "const config = { port: 8080, host: 'localhost', debug: true };"),
+    [['3000', 'false'], ['8080', 'true']]);
+  assert.deepEqual(marks('call(bar, 1)', 'call(baz, 1)'), [['bar'], ['baz']]);
+  assert.deepEqual(marks('f(a, c)', 'f(a, b, c)'), [[], ['b, ']]); // only inserted
+  assert.deepEqual(marks('a.b.c = 1;', 'x.y.z = 1;'), [['a.b.c'], ['x.y.z']]); // under 3 characters apart: one mark
+  assert.deepEqual(marks('one two three four five', 'one 2 three 4 five'), [['two', 'four'], ['2', '4']]);
+  assert.equal(ui.inlineMarks('foo(1)', 'bar(2)'), null);
+  assert.equal(ui.inlineMarks('same', 'same'), null);
+});
+
+test('linePairs: removed lines and the added lines right after them that look alike, in order', () => {
+  assert.deepEqual(ui.linePairs([' a', '-const b = 1;', '-const c = 1;', '+const b = 2;', '+const c = 2;', ' d', '-f(e)', '+f(E)']),
+    [[1, 3], [2, 4], [6, 7]]);
+  assert.deepEqual(ui.linePairs(['+const a = 1;', '-const a = 2;', ' c']), []); // added before removed: not a replacement
+  assert.deepEqual(ui.linePairs(['-foo(1)', '+bar(2)']), []); // too little in common
+});
+
+test('linePairs: runs of different lengths pair the lines that look alike', () => {
+  // 3 removed, 4 added (the diff of src/mod.js that showed no marks while only equal runs were paired)
+  assert.deepEqual(ui.linePairs([
+    '-const list = [alpha, beta];', '-// one', '-module.exports = { greet };',
+    '+const list = [alpha, delta];', '+// uno', '+// cuatro', '+module.exports = { greet, list };',
+  ]), [[0, 3], [1, 4], [2, 6]]);
+  // the first removed line is gone for good and the last added one is new: the middle two still pair
+  assert.deepEqual(ui.linePairs(['-// gone entirely', '-const a = 1;', '+const a = 2;', '+let fresh = true;']), [[1, 2]]);
+  // a run too big to compare every pair falls back to line i with line i when the counts match
+  const big = Array.from({ length: 60 }, (_, i) => `-x${i}`).concat(Array.from({ length: 60 }, (_, i) => `+y${i}`));
+  assert.deepEqual(ui.linePairs(big)[59], [59, 119]);
+  assert.deepEqual(ui.linePairs(big.slice(1)), []);
 });

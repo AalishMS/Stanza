@@ -415,16 +415,24 @@ site/            the product page (static, open index.html or serve the folder; 
   `DIFF_TTL` (20 s; an edit inside a new untracked folder only shows as `? folder/`), so a poll with nothing changed runs
   no git. Status paths are relative to the folder status ran in (`../x` for a project in a repo's subfolder), so they are
   resolved against the project, not the repo root. A result's `id` (sha1 of the patch and the untracked files read) lets
-  the renderer skip an unchanged one (`{ same: true }`). `renderDiff` rebuilds the
-  page only when the id changes, keeping its scroll (`diffScroll` per project) and the files folded by hand (`diffFolds`;
-  lockfiles and files over 400 changed lines start folded). Lines of a file are built when it is first unfolded. A
-  replaced line's changed part is marked (`linePairs` + `inlineChange` in lib/ui.js: common prefix/suffix, grown to whole
-  words, an insertion slid to start after a space). A click on a line number opens the file there (`api.openFile`, new-side
+  the renderer skip an unchanged one (`{ same: true }`). Each file has its own `id` too (sha1 of its parsed data): when the
+  result changes, `renderDiff` rebuilds only the files whose id changed and leaves the other sections in place (`diffEls`;
+  never moved or re-added, which would drop a selection in them; ~3 ms instead of ~80 ms for a 1,400-line diff), and keeps
+  the file at the top of the view at the same offset (`diffAnchor` / `toAnchor`; at scroll 0 it stays at 0, so a new first
+  file shows). Switching projects keeps the scroll per project (`diffScroll`). Folds: lockfiles and files over 400 changed
+  lines start folded; a file keeps the state it was first shown with or set to (`diffFolds`), so one being read never folds
+  itself when Claude's edits take it past 400. Folding a file from its header stuck at the top scrolls that header back
+  into place. Lines of a file are built when it is first unfolded. A replaced line's changed parts are marked
+  (`linePairs` + `inlineMarks` in lib/ui.js): removed and added lines are paired by likeness, also when the runs differ in
+  length (a dynamic program over the run, `PAIR_MAX` pairs, else line i with line i when the counts match), `inlineChange`
+  finds the changed middle (common prefix/suffix, grown to whole words, an insertion slid to start after a space; too
+  little shared = no marks), and inside it words and symbols are compared (LCS), so two edits in a line get a mark each
+  (joined when under 3 characters apart). A click on a line number opens the file there (`api.openFile`, new-side
   line); a file's `code` button opens it at its first change. Files without lines (binary, too big, mode change, pure
   rename, a nested repository that `ls-files` lists as `sub/`) are a header with a note. Binary files get no Open button
   (`openFileAt` hands them to `shell.openPath`, which would start a changed `.exe`). Read-only: no staging, reverting or
-  commenting. Known gaps: a change of line endings only shows identical -/+ rows (`\r` is stripped); the page is rebuilt
-  on every change, so a selection in it is lost when Claude edits a file.
+  commenting. Known gaps: a change of line endings only shows identical -/+ rows (`\r` is stripped); a selection inside a
+  file is lost when Claude edits that file.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions under it (title as in Claude Code: the `/rename` name, `custom-title`, which Claude re-appends like the
   AI title and which is looked for in the head too, else the last `ai-title`, else the first prompt); clicking one focuses its tab or opens
