@@ -532,8 +532,10 @@ function trackTab(t) {
     if (!t.run) t.run = { start: now };
     t.run.last = now;
     t.notified = false;
+    t.wasWorking = true;
     return;
   }
+  if (t.wasWorking) { t.wasWorking = false; if (!t.sessionId) soonSessions(); } // a first reply gets the transcript listed
   // Re-read the screen only after xterm parsed new output (onWriteParsed); otherwise the last answer still holds.
   if (t.screenDirty !== false) { t.screenDirty = false; t.awaiting = awaitingInput(t); }
   if (t.title.startsWith('✳') && t.awaiting) {
@@ -723,6 +725,7 @@ function wireTerminal(tab) {
       tab.enters.push(Date.now());
       if (tab.enters.length > 100) tab.enters.shift();
       if (tab.parked) unpark(tab); // Enter = the first prompt: the row moves up
+      if (tab.kind === 'claude') soonSessions(); // /new, /clear and /resume switch the session at once
     }
     api.ptyWrite(tab.id, d);
   });
@@ -1770,6 +1773,7 @@ function assignSessions() {
   for (const c of changes) {
     const t = tabs.get(c.id);
     if (c.followed) { retired.add(t.sessionId); infoBy.delete(t.id); }
+    if (!c.sessionId) { t.resumeId = null; t.fork = false; } // /new: a "New session" placeholder, not "Resumed session"
     t.sessionId = c.sessionId;
   }
   saveTabs(); // diffed: only writes when a tab just got its transcript
@@ -4023,6 +4027,14 @@ async function pollGit(all = true) {
 let sessionsBusy = false;
 let sessionsQueued = false;
 let sessionsTick = 0;
+let sessionsSoon = null;
+
+/** A poll of the projects on screen shortly after an Enter or a finished reply in a Claude tab, not at the next 4 s tick. */
+function soonSessions(ms = 400) {
+  clearTimeout(sessionsSoon);
+  sessionsSoon = setTimeout(() => (sessionsBusy ? soonSessions(300) : pollSessions(false)), ms);
+}
+
 async function pollSessions(all = true) {
   const shown = all ? null : new Set([...[...tabs.values()].map((t) => t.project.path), ...expanded, currentProject()?.path]);
   // removed projects with open tabs too: their rows need titles, fresh tabs their transcript (assignSessions)

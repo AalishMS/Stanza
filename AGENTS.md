@@ -403,7 +403,12 @@ site/            the product page (static, open index.html or serve the folder; 
   a record no older than the tab and owned by no tab exists, at most `LIVE_TRIES` times; the oldest interactive record
   wins over a nested `claude`, `liveRecord` in lib/parse.js), then reads that one file per poll. The renderer keeps it in
   `liveBy`; `matchSessions` gives a tab its live id once that transcript is listed (a fresh tab stays "New session" until
-  then) and leaves it out of the guessing. Tabs without a record (older Claude, a failed lookup) are matched heuristically:
+  then) and leaves it out of the guessing. `listSessions` hides transcripts with no reply or title, so after `/new` or
+  `/clear` the live id isn't listed until the first reply: the tab lets go of its old session at once (`sessionId` null,
+  `resumeId`/`fork` cleared, so it reads "New session"; the old one drops back into the list). A `--resume` start reports
+  the resumed id from its first write (measured), so this never flickers at launch. An Enter in a Claude tab, and the end
+  of a run in a tab without a transcript (`trackTab`'s `wasWorking`), poll the projects on screen 400 ms later
+  (`soonSessions`) instead of at the next 4 s tick: `/new` shows in ~0.4 s, the first reply's row ~2 s after its Enter. Tabs without a record (older Claude, a failed lookup) are matched heuristically:
   Claude creates a transcript when a prompt is sent (birth ~150 ms after the Enter, measured), so each free file goes to the
   running tab whose Enter (`tab.enters`, the last 100) came last before its birth: a tab without one yet (up to 60 s before;
   a fork also may own a file born within 15 s of its start, in case it writes its copy at once) or one whose transcript had

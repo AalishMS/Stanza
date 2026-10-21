@@ -195,7 +195,8 @@
    * `retired`: ids a tab let go of (closed, restarted as new, left by /clear), never handed to another tab. Returns
    * `[{ id, sessionId, followed }]` for the tabs whose transcript changes.
    * A tab with a `live` id takes it as soon as its transcript is listed (exact; the only way to follow /resume, which
-   * keeps writing to the old session's file) and is left out of the guessing below, which covers Claude versions
+   * keeps writing to the old session's file), and lets go of its old one (`sessionId: null`) while it isn't (/new,
+   * /clear: listed after the first reply). Such tabs are left out of the guessing below, which covers Claude versions
    * without that record.
    * Claude creates a transcript when a prompt is sent (a session's first, or the first after /clear), so an Enter was
    * typed in its tab just before the file was born: each free file goes to the tab whose Enter came last before it.
@@ -212,8 +213,11 @@
     const changed = new Set();
     for (const t of tabs) {
       if (!t.running || !t.live || t.live === t.sessionId) continue;
-      if (!(sessionsBy[t.project] || []).some((s) => s.id === t.live)) continue; // no transcript yet: wait
-      out.push({ id: t.id, sessionId: t.live, followed: !!t.sessionId });
+      const list = sessionsBy[t.project];
+      if (!list) continue; // not listed yet at all (launch)
+      if (list.some((s) => s.id === t.live)) out.push({ id: t.id, sessionId: t.live, followed: !!t.sessionId });
+      // /new or /clear: Claude lists the transcript only after a reply, so until then the tab is a new session, not the old one
+      else if (t.sessionId) out.push({ id: t.id, sessionId: null, followed: true });
     }
     // the last Enter typed in `t` (since it started) up to `ms` before file `s` was born
     const lastEnter = (t, s, ms) => Math.max(-Infinity,

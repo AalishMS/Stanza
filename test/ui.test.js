@@ -227,8 +227,13 @@ test('matchSessions: Claude\'s own record wins, so /resume to an old transcript 
   // a "New session" tab that resumed before its first prompt, and a retired id resumed again
   assert.deepEqual(ui.matchSessions([{ ...tab, sessionId: null, live: 'old' }], sessionsBy, new Set(['old'])),
     [{ id: 'a', sessionId: 'old', followed: false }]);
-  // no transcript for the live id yet (fresh tab, or just after /clear): wait, and don't guess for this tab either
+  // no transcript for the live id yet (fresh tab): wait, and don't guess for this tab either
   assert.deepEqual(ui.matchSessions([{ ...tab, sessionId: null, live: 'new', enters: [1900] }], sessionsBy, new Set()), []);
+  // /new or /clear: Claude lists the new transcript only after a reply, so the tab lets go of the old one at once
+  assert.deepEqual(ui.matchSessions([{ ...tab, live: 'new' }], sessionsBy, new Set()),
+    [{ id: 'a', sessionId: null, followed: true }]);
+  // ...but not before its project's sessions were listed at all (launch)
+  assert.deepEqual(ui.matchSessions([{ ...tab, live: 'new' }], {}, new Set()), []);
   // already on it, or exited
   assert.deepEqual(ui.matchSessions([{ ...tab, live: 'cur' }], sessionsBy, new Set()), []);
   assert.deepEqual(ui.matchSessions([{ ...tab, live: 'old', running: false }], sessionsBy, new Set()), []);
