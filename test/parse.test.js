@@ -432,6 +432,15 @@ test('edgeHold on the right keeps the right sidebar out just right of the window
   assert.equal(p.edgeHold({ x: 920, y: 640 }, b, 64), 'away'); // left is still the default side
 });
 
+test('edgeHold keeps a sidebar out while the pointer is over the top bar', () => {
+  const b = { x: 100, y: 50, width: 800, height: 600 }; // top bar: y 50..89
+  assert.equal(p.edgeHold({ x: 500, y: 50 }, b, 64, 0, 'left', 0, 40), 'hold');
+  assert.equal(p.edgeHold({ x: 899, y: 89 }, b, 64, 0, 'right', 0, 40), 'hold');
+  assert.equal(p.edgeHold({ x: 500, y: 90 }, b, 64, 0, 'left', 0, 40), 'inside'); // below it: the page sees the pointer
+  assert.equal(p.edgeHold({ x: 500, y: 60 }, b, 64), 'inside'); // no bar given
+  assert.equal(p.edgeHold({ x: 500, y: 49 }, b, 64, 0, 'left', 0, 40), 'away'); // above the window
+});
+
 test('modelName groups the id spellings of one model', () => {
   assert.equal(p.modelName('claude-opus-5-5'), 'Opus 5.5');
   assert.equal(p.modelName('anthropic/claude-opus-4-8-ps-aws-dst'), 'Opus 4.8');

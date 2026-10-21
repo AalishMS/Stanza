@@ -3606,9 +3606,12 @@ function placeBrand() {
    opened is still open or one of its fields has focus. A pointer that leaves the window through that edge (aiming at the
    sidebar of a window that isn't maximized) also brings it out and keeps it out: the page can't see the cursor out there,
    so main watches it (peek:hold) and says when it has gone well past the edge or above / below the window (peek:away).
+   The top bar keeps a sidebar that is out out too: its buttons by the pointer position, its drag region (no pointer events,
+   like outside the window) through main's watch.
    The left sidebar peeks while collapsed with a tab open, the right one whenever it is closed (by hand, by autoRside in a
    cramped split, or on the home screen). */
 let pointer = null; // last pointer position in the window, null once it has left it
+const topBarH = () => $('#topbar').getBoundingClientRect().bottom;
 
 /* A peek slides on a spring instead of a CSS transition: a reversed transition flips direction in one frame (a peek
    cancelled while still coming in snapped back), a spring keeps its speed, so it slows down, stops and drifts back
@@ -3632,7 +3635,7 @@ function makePeek({ side, el, zone, cls, inLayout, keep, onOut }) {
   function set(on) {
     clearTimeout(pk.timer);
     if (!on) pk.sticky = false;
-    if (!on && pk.holding) { pk.holding = false; api.peekRelease(); }
+    if (!on && pk.holding) { pk.holding = false; api.peekRelease(side); }
     on = on && !inLayout();
     if (on === peeking()) return;
     document.body.classList.toggle(cls, on);
@@ -3688,14 +3691,15 @@ function makePeek({ side, el, zone, cls, inLayout, keep, onOut }) {
       // the position, not :hover: a pointer resting where the sidebar slid in under it isn't :hover until it moves
       const r = $(el).getBoundingClientRect();
       const over = pointer && (dir < 0 ? pointer.x < r.right : pointer.x >= r.left) && pointer.y >= r.top && pointer.y < r.bottom;
-      if (pk.holding || pk.sticky || over || keep()) later(120);
+      const inBar = pointer && pointer.y < topBarH();
+      if (pk.holding || pk.sticky || over || inBar || keep()) later(120);
       else set(false);
     }, ms);
   }
-  /** Its edge zone's distance from the window's top and bottom in CSS px, for main's peek:hold. */
+  /** Its edge zone's distance from the window's top and bottom in CSS px, and whether it is out, for main's peek:hold. */
   function insets() {
     const r = $(zone).getBoundingClientRect();
-    return [r.top, window.innerHeight - r.bottom];
+    return [r.top, window.innerHeight - r.bottom, peeking()];
   }
   return Object.assign(pk, { peeking, set, stop, later, insets });
 }
@@ -3715,16 +3719,17 @@ const peeks = [leftPeek, rightPeek];
 function wirePeek() {
   document.addEventListener('mousemove', (e) => {
     pointer = { x: e.clientX, y: e.clientY };
-    for (const pk of peeks) if (pk.holding) { pk.holding = false; api.peekRelease(); } // back in the window: its own events take over
+    for (const pk of peeks) if (pk.holding) { pk.holding = false; api.peekRelease(pk.side); } // back in the page: its own events take over
   }, { passive: true });
+  // also fires when the pointer moves onto the top bar's drag region
   document.documentElement.addEventListener('mouseleave', async () => {
     pointer = null;
     const free = peeks.filter((pk) => !pk.inLayout());
     if (!free.length) return;
-    const side = await api.peekHold(Object.fromEntries(free.map((pk) => [pk.side, pk.insets()])));
+    const held = await api.peekHold({ ...Object.fromEntries(free.map((pk) => [pk.side, pk.insets()])), bar: topBarH() });
     for (const pk of free) {
-      if (pk.side !== side) { if (pk.peeking()) pk.later(); continue; }
-      if (pointer || pk.inLayout()) { api.peekRelease(); continue; } // came back (or pinned it) while main was asked
+      if (!held.includes(pk.side)) { if (pk.peeking()) pk.later(); continue; }
+      if (pointer || pk.inLayout()) { api.peekRelease(pk.side); continue; } // came back (or pinned it) while main was asked
       pk.holding = true;
       pk.set(true);
       pk.later();
@@ -3732,7 +3737,7 @@ function wirePeek() {
   });
   const of = (side) => (side === 'right' ? rightPeek : leftPeek);
   api.onPeekAway((side) => { const pk = of(side); pk.holding = false; pk.set(false); });
-  api.onPeekInside((side) => { const pk = of(side); pk.holding = false; if (pk.peeking()) pk.later(); }); // e.g. back over the top bar, which sends no mousemove
+  api.onPeekInside((side) => { const pk = of(side); pk.holding = false; if (pk.peeking()) pk.later(); }); // back in the page below the top bar
   for (const pk of peeks) {
     $(pk.zone).addEventListener('mouseenter', () => { pk.set(true); pk.later(); });
     $(pk.el).addEventListener('mouseenter', () => { pk.sticky = false; }); // from now on it leaves with the pointer

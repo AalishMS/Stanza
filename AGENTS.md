@@ -149,8 +149,8 @@ site/            the product page (static, open index.html or serve the folder; 
   - File links: `openFileAt` tries `code -g` (after `shellEnvReady`), then `open -a "Visual Studio Code" <file>`, then `shell.openPath`.
   - Sidebar peek (`wirePeek` / `makePeek`, a collapsed left sidebar slides in from the left edge, a closed right one from
     the right edge; DESIGN.md "Peek" / "Right peek"): no Mac branch; the edge zones start below the top bar, so the left
-    one never sits under the traffic lights. Main's `peekHold` (cursor just outside that edge keeps it out) uses
-    `screen.getCursorScreenPoint` + content bounds, both in points on macOS too.
+    one never sits under the traffic lights. Main's `peekHold` (cursor just outside that edge, or over the top bar's drag
+    region with the sidebar out, keeps it out) uses `screen.getCursorScreenPoint` + content bounds, both in points on macOS too.
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.

@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   saveTabs: (payload) => ipcRenderer.send('tabs:set', payload),
   saveDocs: (docs) => ipcRenderer.send('docs:set', docs),
   peekHold: (zones) => ipcRenderer.invoke('peek:hold', zones),
-  peekRelease: () => ipcRenderer.send('peek:release'),
+  peekRelease: (side) => ipcRenderer.send('peek:release', side),
   onPeekAway: (cb) => on('peek:away', cb),
   onPeekInside: (cb) => on('peek:inside', cb),
 

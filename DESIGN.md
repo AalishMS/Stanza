@@ -208,7 +208,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   cancelled on its way in slows, stops and glides back instead of reversing in one frame; in and out each look done in
   ~200 ms. It leaves 80 ms after the pointer leaves it. A pointer that leaves
   the window through the left edge (a window that isn't maximized) also brings it out and keeps it out while it stays within
-  144 px of the edge and within the window's height (main watches the cursor out there, `peekHold`). It stays while its `…`
+  144 px of the edge and within the window's height (main watches the cursor out there, `peekHold`). A peek that is out also
+  stays while the pointer is over the top bar (its buttons, its drag region and the window buttons). It stays while its `…`
   menu or footer popover is open or the search has focus, and leaves when a session row is dragged. Toggle / `Ctrl+S` pin
   it as usual. No transition under `prefers-reduced-motion`.
 - Search: a plain 32 px row (search icon + "Search" placeholder), no border; hover/focus = `--sidebar-hover`. Its right end

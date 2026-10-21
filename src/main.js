@@ -297,34 +297,44 @@ function send(channel, ...args) {
 // Sidebar peek: a pointer that left the window through the edge of a collapsed sidebar (left, or the right sidebar)
 // keeps it out while it stays within PEEK_SLACK px of that edge and within the window's height. The page can't see the
 // cursor out there, so main polls it (only while it is there) and tells the page when it has moved on (edgeHold).
+// The top bar is the same for a sidebar that is out: its drag region sends the page no pointer events either.
 const PEEK_SLACK = 144; // CSS px
-let peekWatch = null;
-function peekState(side, top = 0, bottom = 0) {
+const peekWatch = { sides: new Set(), bar: 0, timer: null };
+function peekState(side, top = 0, bottom = 0, bar = 0) {
+  if (mainWindow.isMinimized() || !mainWindow.isVisible()) return 'away'; // minimized from the top bar: the cursor is still there
   const z = mainWindow.webContents.getZoomFactor();
-  return edgeHold(screen.getCursorScreenPoint(), mainWindow.getContentBounds(), PEEK_SLACK * z, top * z, side, bottom * z);
+  return edgeHold(screen.getCursorScreenPoint(), mainWindow.getContentBounds(), PEEK_SLACK * z, top * z, side, bottom * z, bar * z);
 }
-function stopPeekWatch() {
-  clearInterval(peekWatch);
-  peekWatch = null;
+/** Stop watching for `side` ('left' | 'right'), or for both. */
+function stopPeekWatch(side) {
+  if (side) peekWatch.sides.delete(side);
+  else peekWatch.sides.clear();
+  if (peekWatch.sides.size) return;
+  clearInterval(peekWatch.timer);
+  peekWatch.timer = null;
 }
 /**
- * The pointer just left the window: is it beside the edge of one of the collapsed sidebars in `zones` (`{ left, right }`,
- * each `[top, bottom]` in CSS px: its edge zone's distance from the window's top and bottom)? Then watch it and return
- * that side, else null.
+ * The pointer just left the page: is it beside the edge of one of the collapsed sidebars in `zones` (`{ left, right, bar }`,
+ * each side `[top, bottom, out]`: its edge zone's distance from the window's top and bottom in CSS px, and whether it is
+ * out now), or over the top bar (`bar` CSS px high) with that sidebar out? Then watch it and return those sides.
  */
 function peekHold(zones) {
   stopPeekWatch();
-  if (!mainWindow || mainWindow.isDestroyed()) return null;
-  const side = ['left', 'right'].find((s) => zones[s] && peekState(s, ...zones[s]) === 'hold');
-  if (!side) return null;
-  peekWatch = setInterval(() => {
+  if (!mainWindow || mainWindow.isDestroyed()) return [];
+  const held = ['left', 'right'].filter((s) => zones[s] && peekState(s, zones[s][0], zones[s][1], zones[s][2] ? zones.bar : 0) === 'hold');
+  if (!held.length) return [];
+  peekWatch.sides = new Set(held);
+  peekWatch.bar = zones.bar; // held sidebars are out, so the top bar keeps each of them out from here on
+  peekWatch.timer = setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return stopPeekWatch();
-    const s = peekState(side);
-    if (s === 'hold') return;
-    stopPeekWatch();
-    send(s === 'away' ? 'peek:away' : 'peek:inside', side);
+    for (const side of [...peekWatch.sides]) {
+      const s = peekState(side, 0, 0, peekWatch.bar);
+      if (s === 'hold') continue;
+      stopPeekWatch(side);
+      send(s === 'away' ? 'peek:away' : 'peek:inside', side);
+    }
   }, 40);
-  return side;
+  return held;
 }
 
 function flushSession(id) {
@@ -1937,10 +1947,10 @@ function registerIpc() {
 
   ipcMain.on('notify', (_e, msg) => notify(msg));
   ipcMain.handle('peek:hold', (_e, zones) => {
-    const zone = (z) => (Array.isArray(z) ? [Number(z[0]) || 0, Number(z[1]) || 0] : null);
-    return peekHold({ left: zone(zones?.left), right: zone(zones?.right) });
+    const zone = (z) => (Array.isArray(z) ? [Number(z[0]) || 0, Number(z[1]) || 0, z[2] === true] : null);
+    return peekHold({ left: zone(zones?.left), right: zone(zones?.right), bar: Number(zones?.bar) || 0 });
   });
-  ipcMain.on('peek:release', stopPeekWatch);
+  ipcMain.on('peek:release', (_e, side) => stopPeekWatch(side === 'left' || side === 'right' ? side : undefined));
 
   ipcMain.on('win:flash', () => {
     if (!mainWindow || mainWindow.isFocused()) return;
