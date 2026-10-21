@@ -134,6 +134,8 @@ Things that differ on a Mac:
 - Notifications go through Notification Center. Allow them when asked (under `npm start` they show as Electron).
 - Settings > Appearance > System follows macOS light/dark mode, and the traffic lights and menus follow the chosen theme.
 - Interface zoom (`⌘=` / `⌘-` outside a terminal) moves the traffic lights to stay centred in the taller or shorter top bar.
+- In full screen the traffic lights are hidden, so the sidebar toggle and logo move to the left edge.
+- `⌘Q` and Quit in the Dock ask first only while Claude is working or a dev server started from a tab is running.
 - Markdown tabs work the same; their folder button opens Finder, and Cmd+S saves the editor at once.
 
 If something goes wrong:

@@ -386,7 +386,8 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
   bar and status bar never run under the sidebar.
 - Top bar 40 px (draggable; new-session `+` on the left, right-sidebar toggle and the window controls on the right via
   `titleBarOverlay`). On macOS the traffic lights sit top-left instead (`trafficLightPosition`), so `body.mac` moves the
-  room from the top bar's right padding to `#brand`'s left padding. Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
+  room from the top bar's right padding to `#brand`'s left padding, except in full screen, where macOS hides them
+  (`body.fullscreen`, sent by main). Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
   effort and subagents, then the running count, on the right. There is no separate info bar.
 - **No badges.** Git info is plain text (`main  2 changed`), colored only by meaning.
 - Lists are flat inset rows; nothing wraps or shifts on hover.

@@ -4250,6 +4250,7 @@ async function init() {
   $('#add-project').onclick = addProjects;
   if (IS_MAC) {
     document.body.classList.add('mac'); // room for the traffic lights (styles.css)
+    api.onFullScreen((on) => document.body.classList.toggle('fullscreen', on)); // no traffic lights in full screen
     for (const el of document.querySelectorAll('[title]')) {
       el.title = kbd(el.title).replace('PowerShell', SHELL_LABEL).replace('Explorer', FILES_APP);
     }

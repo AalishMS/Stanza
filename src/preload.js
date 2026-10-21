@@ -68,5 +68,6 @@ contextBridge.exposeInMainWorld('api', {
 
   onOpenPath: (cb) => on('open-path', cb),
   onCloseRequest: (cb) => on('app:close-request', cb),
+  onFullScreen: (cb) => on('win:fullscreen', cb),
   quit: () => ipcRenderer.send('app:quit'),
 });

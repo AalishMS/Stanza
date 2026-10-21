@@ -1475,6 +1475,11 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });
+  // Full screen hides the traffic lights, so #brand gives back the room it keeps for them (body.fullscreen, styles.css)
+  if (IS_MAC) {
+    mainWindow.on('enter-full-screen', () => send('win:fullscreen', true));
+    mainWindow.on('leave-full-screen', () => send('win:fullscreen', false));
+  }
 }
 
 // A background session needs input or finished (the renderer decides when). Clicking brings the window to the front on
@@ -1624,7 +1629,14 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  // macOS Cmd+Q / Dock Quit call app.quit() with the window still open: close it first, so its 'close' handler asks the
+  // renderer (busy tabs) and only a confirmed quit (forceClose) ends the sessions; ending them here first left "Keep open" with dead tabs
+  if (!forceClose && sessions.size && mainWindow && !mainWindow.isDestroyed()) {
+    e.preventDefault();
+    mainWindow.close();
+    return;
+  }
   for (const s of sessions.values()) endSession(s);
 });
 
