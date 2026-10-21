@@ -181,6 +181,9 @@ site/            the product page (static, open index.html or serve the folder; 
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
+  - Home screen: no Mac branch. The greeting's name is `os.userInfo().username`, the short (often lowercase) login
+    name on a Mac. The standalone proposals it came from (`mockups/home`, no app bridge) have a preview `IS_MAC` /
+    `kbd()` branch for Cmd hints and Mac sample paths; on a Mac, check them in Safari/Chrome with native fonts.
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s (8 s while the window is visible but unfocused, `idle()`), all projects every 20 s (and on focus).
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
   packaged build (walks up to a `.git` + `package.json` named `stanza`; on macOS a `.app` outside the clone falls back
@@ -281,11 +284,17 @@ site/            the product page (static, open index.html or serve the folder; 
   don't renumber when a tab opens.
 - **Home screen** = no active tab (`activeId` null; `body.no-tabs`, `syncHome`), not "no tabs": clicking the logo or app
   name (`#home`, `goHome`) shows it while other tabs keep running in the sidebar. Like closing the last tab, it saves no
-  tabs for restore. Next to the projects it shows plan usage (the footer's `usage`) and **Claude stats** (`homeActivity`):
+  tabs for restore. Layout = the "Workbench" mockup (`mockups/home`, DESIGN.md "Welcome screen"): a **Last conversation**
+  card (`lastConversation`: each project's newest `sessionsBy` entry, the latest `last` wins; Continue = `openSessionRow`,
+  so an open tab is focused, never resumed twice), then the projects (`homeProjectList`: sidebar order, Chats last, the
+  first `HOME_ROWS` (6) then "Show N more" (`homeAll`); "Find a project" (`homeQuery`) filters name, path and branch;
+  both runtime only). `renderWelcome` rebuilds on git and session polls, so it puts focus (and the search caret) back on
+  the element with the same `data-hk`. The greeting's name is main's `state:get` `user` (`os.userInfo().username`; on a
+  Mac the short login name). In a right column it shows plan usage (the footer's `usage`) and **Claude stats** (`homeActivity`):
   totals, streak and a messages-per-day map from Claude Code's own `/stats` cache, `~/.claude/stats-cache.json`
   (undocumented, version 5; Claude rewrites it only when `/stats` runs, so the page says "Updated <date>"). Main's
   `stats:get` re-reads it only when its mtime changes and returns `summarizeStats` (lib/parse.js; null for a missing file
-  or unknown shape); the map's cells come from `activityGrid` (lib/ui.js). `pollStats` runs when the home screen shows
+  or unknown shape); the map's cells come from `activityGrid`, its month labels from `monthLabels` (lib/ui.js). `pollStats` runs when the home screen shows
   and on focus, never with a tab active. `renderWelcome` is key-diffed (`lastWelcomeKey`). No Mac branch (same path).
 - **Closing**: `Ctrl+W`, the top-bar `×` (`#close-tab`) and each pane header's `×` all call `closeTab`. It only asks "End this session?" when
   Claude is working in the tab (`isWorking`) or a dev server started from it is listening (`ports`, owner = this tab); idle tabs close silently.

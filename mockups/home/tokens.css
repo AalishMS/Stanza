@@ -1,0 +1,163 @@
+/* Snapshot of production tokens; standalone mockups, no app styles. */
+/* shadcn/ui neutral tokens, dark (default) and light. See DESIGN.md. The theme (data-theme on <html>, set by renderer.js
+   from prefers-color-scheme, which main's nativeTheme.themeSource drives) swaps the color tokens below; a
+   [data-theme] element inside the page (settings previews) gets that theme's tokens too. --primary is the only accent:
+   it comes from the accent table further down, and tints derive from it with color-mix(). */
+:root {
+  --primary-foreground: #fafafa;
+  --primary-hover: color-mix(in srgb, var(--primary) 85%, white);
+  --ring: var(--primary);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
+  --group-1: #7c5cd6; /* split groups 2-5 when several exist (the first is --primary); away from the status hues */
+  --group-2: #2f9e93;
+  --group-3: #c0507f;
+  --group-4: #c47a35;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --sidebar-w: 232px; /* both widths are user-resizable (ui.sidebarW / ui.rsideW) */
+  --rside-w: 300px;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, Menlo, monospace;
+}
+
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0a0a0a; /* terminal, top bar, status bar, right panel, dialogs */
+  --foreground: #fafafa;
+  --card: #0a0a0a;
+  --popover: #171717; /* menus and popovers sit one step above the terminal (shadcn v4) */
+  --secondary: #262626;
+  --muted: #262626;
+  --accent: #262626; /* shadcn's neutral hover surface, not the brand color */
+  --muted-foreground: #a1a1a1;
+  --faint: #737373; /* tertiary meta: paths, times, placeholders */
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 15%);
+  --destructive: #ff6467;
+  --destructive-fill: color-mix(in srgb, var(--destructive) 60%, transparent);
+  --success: #7fb77e;
+  --warning: #d6b25e;
+  --sidebar: #030303; /* the darkest surface: only the left sidebar (plus faint noise, see #sidebar) */
+  --sidebar-foreground: #fafafa;
+  --sidebar-accent: #262626; /* selected row */
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 50%, transparent); /* hovered row: a softer selected */
+  --sidebar-border: #1d1d1d; /* 1px dividers: sidebar / terminal / right panel */
+  --scrim: rgb(0 0 0 / 60%);
+  /* on near-black, shadcn's 10% shadows vanish; raised things need a real one to separate from the terminal */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 30%);
+  --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 60%), 0 2px 6px -2px rgb(0 0 0 / 40%);
+  --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 70%), 0 6px 12px -6px rgb(0 0 0 / 50%);
+  --shadow-side: 8px 0 24px -4px rgb(0 0 0 / 80%); /* a panel floating in from the left (sidebar peek) */
+  --shadow-side-r: -8px 0 24px -4px rgb(0 0 0 / 80%); /* ...and from the right (right sidebar peek) */
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --secondary: #f5f5f5;
+  --muted: #f0f0f0;
+  --accent: #f0f0f0;
+  --muted-foreground: #5c5c5c;
+  --faint: #858585;
+  --border: rgb(0 0 0 / 9%);
+  --input: rgb(0 0 0 / 14%);
+  --destructive: #d92d2d;
+  --destructive-fill: var(--destructive);
+  --success: #2f8a3c;
+  --warning: #a86b00;
+  --sidebar: #f7f7f7; /* the frame is the slightly darker side in light too */
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-accent: #e8e8e8;
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 60%, transparent);
+  --sidebar-border: #e5e5e5;
+  --scrim: rgb(0 0 0 / 35%);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 5%);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+  --shadow-side: 6px 0 20px -4px rgb(0 0 0 / 16%);
+  --shadow-side-r: -6px 0 20px -4px rgb(0 0 0 / 16%);
+}
+
+/* Claude colors (ui.claude): the Claude desktop app's palettes, picked for the resolved scheme. Dark = warm charcoal and
+   ivory, light = cream and warm near-black. --primary is fixed to clay (below the accent table, so it beats data-accent). */
+[data-theme="claude-dark"] {
+  color-scheme: dark;
+  --background: #262624;
+  --foreground: #faf9f5;
+  --card: #262624;
+  --popover: #30302e;
+  --secondary: #3a3a37;
+  --muted: #3a3a37;
+  --accent: #3a3a37;
+  --muted-foreground: #c2c0b6;
+  --faint: #8f8d85;
+  --border: rgb(222 220 209 / 12%);
+  --input: rgb(222 220 209 / 18%);
+  --destructive: #f0706a;
+  --destructive-fill: color-mix(in srgb, var(--destructive) 60%, transparent);
+  --success: #8fbf7f;
+  --warning: #dcb064;
+  --sidebar: #1f1e1d;
+  --sidebar-foreground: #faf9f5;
+  --sidebar-accent: #3a3a37;
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 50%, transparent);
+  --sidebar-border: #34332f;
+  --scrim: rgb(0 0 0 / 55%);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 30%);
+  --shadow-md: 0 8px 24px -6px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 35%);
+  --shadow-lg: 0 20px 40px -8px rgb(0 0 0 / 60%), 0 6px 12px -6px rgb(0 0 0 / 45%);
+  --shadow-side: 8px 0 24px -4px rgb(0 0 0 / 70%);
+  --shadow-side-r: -8px 0 24px -4px rgb(0 0 0 / 70%);
+}
+
+[data-theme="claude-light"] {
+  color-scheme: light;
+  --background: #faf9f5;
+  --foreground: #141413;
+  --card: #faf9f5;
+  --popover: #ffffff;
+  --secondary: #f0eee6;
+  --muted: #f0eee6;
+  --accent: #ede9de;
+  --muted-foreground: #5e5d59;
+  --faint: #87867f;
+  --border: rgb(31 30 29 / 10%);
+  --input: rgb(31 30 29 / 16%);
+  --destructive: #b53333;
+  --destructive-fill: var(--destructive);
+  --success: #3e7a2c;
+  --warning: #9a6200;
+  --sidebar: #f3f1ea;
+  --sidebar-foreground: #141413;
+  --sidebar-accent: #e6e2d6;
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-accent) 60%, transparent);
+  --sidebar-border: #e3dfd3;
+  --scrim: rgb(20 20 19 / 35%);
+  --shadow-sm: 0 1px 2px 0 rgb(31 30 29 / 6%);
+  --shadow-md: 0 4px 6px -1px rgb(31 30 29 / 10%), 0 2px 4px -2px rgb(31 30 29 / 10%);
+  --shadow-lg: 0 10px 15px -3px rgb(31 30 29 / 10%), 0 4px 6px -4px rgb(31 30 29 / 10%);
+  --shadow-side: 6px 0 20px -4px rgb(31 30 29 / 16%);
+  --shadow-side-r: -6px 0 20px -4px rgb(31 30 29 / 16%);
+}
+
+/* Accents (ui.accent, data-accent on <html>; swatches carry their own data-accent). The only place these hues live.
+   Each keeps white text readable on primary buttons. The split-group color that matches the accent is swapped for
+   blue, so the five group colors stay distinct. */
+:root {
+  --hue-blue: #2850a5;
+  --hue-violet: #6b4fc8;
+  --hue-teal: #12776f;
+  --hue-rose: #b8336a;
+  --hue-clay: #c96442; /* Claude's, only with Claude colors on */
+}
+:root, [data-accent="blue"] { --primary: var(--hue-blue); }
+[data-accent="violet"] { --primary: var(--hue-violet); --group-1: var(--hue-blue); }
+[data-accent="teal"] { --primary: var(--hue-teal); --group-2: var(--hue-blue); }
+[data-accent="rose"] { --primary: var(--hue-rose); --group-3: var(--hue-blue); }
+[data-theme^="claude-"] { --primary: var(--hue-clay); --group-4: var(--hue-blue); } /* the orange group color steps aside */
+

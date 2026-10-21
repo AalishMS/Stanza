@@ -222,6 +222,8 @@ const defaultChatDir = () => path.join(os.homedir(), 'Claude Chats');
 const chatDir = () => (typeof state.chatDir === 'string' && state.chatDir) || defaultChatDir();
 /** For the settings page: where chats run, and whether that is the default or the home folder (trust asked every time). */
 const chatInfo = () => ({ dir: chatDir(), isDefault: !state.chatDir, isHome: samePath(chatDir(), os.homedir()) });
+/** The home screen's greeting name: the OS account name (empty if it can't be read, the greeting then has none). */
+const userName = () => { try { return os.userInfo().username || ''; } catch { return ''; } };
 
 /** Settings: run chats in `dir` (null = the default folder). Moves the Chats entry if there is one; old chats stay on disk. */
 function setChatDir(dir) {
@@ -1790,7 +1792,7 @@ function docChanged(k, name) {
 // ------------------------------------------------------------------ ipc ----
 
 function registerIpc() {
-  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs(), docs: restorableDocs(), chat: chatInfo() }));
+  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs(), docs: restorableDocs(), chat: chatInfo(), user: userName() }));
   ipcMain.on('tabs:set', (_e, payload) => saveTabs(payload));
   ipcMain.on('docs:set', (_e, payload) => saveDocs(payload));
 

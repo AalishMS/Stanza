@@ -285,9 +285,26 @@
     return out;
   }
 
+  /**
+   * Month labels over the activity map: { col, month: "YYYY-MM" } for each week column holding a month's 1st, plus the
+   * first column's month. Labels need 3 columns of room: a closer older one is dropped, and none starts in the last
+   * column (it would run past the map).
+   */
+  function monthLabels(grid) {
+    const out = [];
+    grid.forEach((col, i) => {
+      const first = col.find((c) => c && c.date.endsWith('-01')) || (i === 0 ? col[0] : null);
+      if (!first || i > grid.length - 2) return;
+      if (out.length && i - out[out.length - 1].col < 3) out.pop();
+      out.push({ col: i, month: first.date.slice(0, 7) });
+    });
+    return out;
+  }
+
   const helpers = {
     contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
     jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid,
+    monthLabels,
   };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);

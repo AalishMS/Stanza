@@ -137,6 +137,10 @@ Things that differ on a Mac:
 - In full screen the traffic lights are hidden, so the sidebar toggle and logo move to the left edge.
 - `⌘Q` and Quit in the Dock ask first only while Claude is working or a dev server started from a tab is running.
 - Markdown tabs work the same; their folder button opens Finder, and Cmd+S saves the editor at once.
+- The home screen greets you with your macOS login name (the short one, e.g. "jsmith").
+
+The home screen's design came from the standalone proposals in [mockups/home](mockups/home/README.md) (the
+"Workbench" one). Open its `index.html` in Safari or Chrome to compare the layouts; they use sample data.
 
 If something goes wrong:
 

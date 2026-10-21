@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels -- lib/ui.js */
 /* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
@@ -2302,107 +2302,200 @@ const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() +
 const dayText = (iso, opts = { month: 'short', day: 'numeric' }) => new Date(`${iso}T12:00:00`).toLocaleDateString([], opts);
 const hourText = (hr) => new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: 'numeric' });
 const HOME_WEEKS = 18;
+const HOME_ROWS = 6; // projects listed before "Show N more projects"
+const relTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+/** "12 minutes ago", "yesterday": the last conversation card's time. */
+function agoText(ms) {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return relTime.format(-m, 'minute');
+  if (m < 24 * 60) return relTime.format(-Math.round(m / 60), 'hour');
+  return relTime.format(-Math.round(m / 1440), 'day');
+}
+const capFirst = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+let userName = ''; // the OS account name (main's state:get), for the greeting
+let homeQuery = ''; // "Find a project" text, runtime only
+let homeAll = false; // "Show N more projects" is open, runtime only
 
-/** Plan limits (the footer's usage, from Anthropic) as meters. */
+/** Plan limits (the footer's usage, from Anthropic): a meter per limit, its reset time under it. */
 function homeUsage() {
   if (!usage?.ok || !usage.limits.length) return null;
   return h('section', { class: 'home-sec' },
-    h('div', { class: 'proj-head' }, h('div', { class: 'proj-label' }, 'Plan usage'),
+    h('div', { class: 'home-head' }, h('h2', {}, 'Plan usage'),
       usage.stale ? h('span', { class: 'home-meta' }, `${Math.round((Date.now() - usage.fetchedAt) / 60000)} min ago`) : null),
-    h('div', { class: 'proj-card home-card' },
-      usage.limits.map((l) => {
-        const pct = limitPct(l);
-        return h('div', { class: 'home-lim' },
-          h('div', { class: 'home-lim-row' },
-            h('span', {}, l.label), h('span', { class: 'home-reset' }, fmtReset(l)),
-            h('span', { class: `home-pct ${levelOf(pct)}` }, `${pct}%`)),
-          h('span', { class: `meter big ${levelOf(pct)}` }, h('i', { style: `width:${pct}%` })));
-      })));
+    usage.limits.map((l) => {
+      const pct = limitPct(l);
+      return h('div', { class: 'home-lim' },
+        h('div', { class: 'home-lim-row' },
+          h('span', {}, l.label), h('span', { class: `home-pct ${levelOf(pct)}` }, String(pct), h('small', {}, '%'))),
+        h('span', { class: `meter big ${levelOf(pct)}` }, h('i', { style: `width:${pct}%` })),
+        h('div', { class: 'home-reset' }, capFirst(fmtReset(l))));
+    }));
 }
 
 /** Totals, streak and a messages-per-day map from Claude Code's /stats cache. */
 function homeActivity() {
-  const head = (meta) => h('div', { class: 'proj-head' }, h('div', { class: 'proj-label' }, 'Activity'), meta);
+  const head = (meta) => h('div', { class: 'home-head' }, h('h2', {}, 'Your activity'), meta);
   if (!stats) {
-    return h('section', { class: 'home-sec' }, head(null),
-      h('div', { class: 'proj-card home-card' }, h('p', { class: 'home-empty' },
-        stats === undefined ? 'Loading…' : 'Run /stats in a Claude session once to see your activity here.')));
+    return h('section', { class: 'home-sec' }, head(null), h('p', { class: 'home-empty' },
+      stats === undefined ? 'Loading…' : 'Run /stats in a Claude session once to see your activity here.'));
   }
-  const tile = (value, label, sub) => h('div', { class: 'home-tile' },
-    h('div', { class: 'home-val' }, value), h('div', { class: 'home-k' }, label), sub ? h('div', { class: 'home-sub' }, sub) : null);
+  const tile = (value, unit, label, sub) => h('div', { class: 'home-tile' },
+    h('div', { class: 'home-val' }, value, unit ? h('small', {}, unit) : null),
+    h('div', { class: 'home-k' }, label), sub ? h('div', { class: 'home-sub' }, sub) : null);
+  const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
   const today = localDay();
   const grid = activityGrid(stats.days, today, HOME_WEEKS);
   const top = stats.models[0];
   const old = stats.asOf && stats.asOf < localDay(new Date(Date.now() - 86400000));
+  const since = stats.since && dayText(stats.since, stats.since.slice(0, 4) === today.slice(0, 4)
+    ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
   return h('section', { class: 'home-sec' },
-    head(stats.since ? h('span', { class: 'home-meta' }, `since ${dayText(stats.since, { month: 'short', day: 'numeric', year: 'numeric' })}`) : null),
-    h('div', { class: 'proj-card home-card' },
-      h('div', { class: 'home-tiles' },
-        tile(compact.format(stats.sessions), 'Sessions', `${stats.activeDays} active days`),
-        tile(compact.format(stats.messages), 'Messages', stats.tools ? `${compact.format(stats.tools)} tool calls` : null),
-        tile(compact.format(stats.tokens), 'Tokens', top ? `mostly ${top.name}` : null),
-        tile(String(stats.streak), 'Day streak', `best ${stats.longest}`)),
-      h('div', { class: 'heat-wrap' },
-        h('div', { class: 'heat', style: `--weeks:${HOME_WEEKS}` },
-          grid.flat().map((c) => (c
-            ? h('i', {
-                class: `l${c.level}${c.date === today ? ' today' : ''}`,
-                title: `${c.n ? c.n.toLocaleString() : 'No'} messages, ${dayText(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}`,
-              })
-            : h('i', { class: 'none' })))),
-        h('div', { class: 'heat-foot' },
-          h('span', {}, stats.peakHour != null ? `Busiest around ${hourText(stats.peakHour)}` : 'Messages per day'),
-          h('span', { class: 'heat-legend' }, 'Less', [0, 1, 2, 3, 4].map((l) => h('i', { class: `l${l}` })), 'More'))),
-      stats.asOf ? h('div', { class: 'home-asof', title: 'Claude Code updates these numbers when /stats runs' },
-        `Updated ${dayText(stats.asOf)}${old ? ' · run /stats to refresh' : ''}`) : null));
+    head(since ? h('span', { class: 'home-meta' }, `Since ${since}`) : null),
+    h('div', { class: 'home-tiles' },
+      tile(compact.format(stats.sessions), null, 'Sessions', `${stats.activeDays} active days`),
+      tile(compact.format(stats.messages), null, 'Messages', stats.tools ? `${compact.format(stats.tools)} tool calls` : null),
+      tile(compact.format(stats.tokens), null, 'Tokens', top ? `Mostly ${top.name}` : null),
+      tile(String(stats.streak), stats.streak === 1 ? 'day' : 'days', 'Current streak', `Best streak: ${days(stats.longest)}`)),
+    h('div', { class: 'heat-wrap' },
+      h('div', { class: 'heat-months', style: `--weeks:${HOME_WEEKS}` },
+        monthLabels(grid).map(({ col, month }) => h('span', { style: `grid-column:${col + 1}` }, dayText(`${month}-01`, { month: 'short' })))),
+      h('div', { class: 'heat', style: `--weeks:${HOME_WEEKS}` },
+        grid.flat().map((c) => (c
+          ? h('i', {
+              class: `l${c.level}${c.date === today ? ' today' : ''}`,
+              title: `${c.n ? c.n.toLocaleString() : 'No'} messages, ${dayText(c.date, { weekday: 'short', month: 'short', day: 'numeric' })}`,
+            })
+          : h('i', { class: 'none' })))),
+      h('div', { class: 'heat-legend' }, 'Less', [0, 1, 2, 3, 4].map((l) => h('i', { class: `l${l}` })), 'More'),
+      h('div', { class: 'heat-foot' },
+        h('span', {}, stats.peakHour != null ? `Busiest around ${hourText(stats.peakHour)}` : 'Messages per day'),
+        stats.asOf ? h('span', { title: 'Claude Code updates these numbers when /stats runs' },
+          `Updated ${dayText(stats.asOf)}${old ? ' · run /stats to refresh' : ''}`) : null)));
+}
+
+/** The newest conversation of any project (by last message), for the "Last conversation" card. */
+function lastConversation() {
+  let best = null;
+  for (const p of projects) {
+    const s = (sessionsBy[p.path] || [])[0];
+    if (s && (!best || s.last > best.s.last)) best = { p, s };
+  }
+  return best;
+}
+
+function homeResume(last) {
+  if (!last) return null;
+  const { p, s } = last;
+  const branch = !p.chat && git[p.path]?.branch;
+  return h('section', { class: 'home-resume' },
+    h('span', { class: 'hr-ico' }, ico('terminal')),
+    h('div', { class: 'hr-main' },
+      h('div', { class: 'hr-eye' }, 'Last conversation', h('span', {}, ` · ${agoText(s.last)}`)),
+      h('div', { class: 'hr-title', title: s.title }, s.title),
+      h('div', { class: 'hr-sub' }, projName(p), branch ? h('span', {}, ` · ${branch}`) : null)),
+    h('button', { class: 'btn outline', 'data-hk': 'resume', onclick: () => openSessionRow(p, s) },
+      tabOfSession(s.id) ? 'Open' : 'Continue', ico('arrowRight')));
+}
+
+/** Branch on the first line, changes (or clean) and ahead/behind on the second; one line without a repo. */
+function homeGit(info) {
+  const [branch, ...rest] = gitPills(info);
+  if (!rest.length) return branch;
+  return [h('span', { class: 'hg-line' }, branch), h('span', { class: 'hg-line' }, rest)];
+}
+
+/** Home rows: the user's projects in sidebar order, then Chats (a "No project" row before its first use). */
+function homeProjectList() {
+  const none = { path: '', none: true };
+  const all = [...realProjects(), projects.find((p) => p.chat) || none];
+  const q = homeQuery.trim().toLowerCase();
+  const hits = q
+    ? all.filter((p) => (p.none ? 'no project chats' : `${projName(p)} ${p.path} ${git[p.path]?.branch || ''}`).toLowerCase().includes(q))
+    : all;
+  const shown = q || homeAll ? hits : hits.slice(0, HOME_ROWS);
+  const openRow = (p) => { homeQuery = ''; if (p.none) openChat(); else focusProject(p); };
+  const row = (p) => {
+    const open = !p.none && tabsOf(p.path).length > 0;
+    return h('button', {
+      class: 'proj', 'data-hk': `p:${p.path}`, onclick: () => openRow(p),
+      title: p.none ? 'Chat outside your projects' : open ? `Go to its open session (${p.path})` : `Start a Claude session in ${p.path}`,
+    },
+      h('span', { class: 'proj-ico' }, ico(p.chat || p.none ? 'chat' : open ? 'terminal' : 'folder')),
+      h('span', { class: 'proj-main' },
+        h('span', { class: 'p-name' }, p.none ? 'No project' : projName(p)),
+        h('span', { class: 'p-path' }, p.none ? 'Chat outside your projects' : h('bdi', {}, p.path))),
+      h('span', { class: 'proj-git' }, p.chat || p.none ? h('span', { class: 'g muted' }, 'No project needed') : homeGit(git[p.path])),
+      h('span', { class: 'proj-go' }, ico('arrowRight')));
+  };
+  return h('section', { class: 'home-projects' },
+    h('div', { class: 'home-head' },
+      h('h2', {}, 'Projects', h('span', { class: 'home-count' }, String(all.length))),
+      h('button', { class: 'btn ghost sm', 'data-hk': 'add', onclick: addProjects }, ico('plus'), 'Add project')),
+    h('label', { class: 'home-find' }, ico('search'),
+      h('input', {
+        type: 'text', 'data-hk': 'find', value: homeQuery, placeholder: 'Find a project…', 'aria-label': 'Find a project',
+        spellcheck: 'false', autocomplete: 'off',
+        oninput: (e) => { homeQuery = e.target.value; renderWelcome(); },
+        onkeydown: (e) => {
+          if (e.key === 'Escape' && homeQuery) { e.preventDefault(); homeQuery = ''; renderWelcome(); }
+          else if (e.key === 'Enter' && q && shown[0]) { e.preventDefault(); openRow(shown[0]); }
+        },
+      }),
+      h('span', { class: 'home-find-n' }, q ? `${hits.length} of ${all.length}` : `${all.length} projects`)),
+    h('div', { class: 'home-list' }, shown.length ? shown.map(row)
+      : h('div', { class: 'home-none' }, 'No matching projects',
+          h('button', { class: 'btn outline sm', 'data-hk': 'clear', onclick: () => { homeQuery = ''; renderWelcome(); } }, 'Clear search'))),
+    !q && all.length > HOME_ROWS
+      ? h('button', {
+          class: `btn ghost sm home-more${homeAll ? ' open' : ''}`, 'data-hk': 'more', 'aria-expanded': String(homeAll),
+          onclick: () => { homeAll = !homeAll; renderWelcome(); },
+        }, homeAll ? 'Show fewer projects' : `Show ${all.length - HOME_ROWS} more projects`, ico('chevron'))
+      : null,
+    h('p', { class: 'home-caption' }, 'Choose a project to start a new Claude session.'));
 }
 
 let lastWelcomeKey = '';
 function renderWelcome() {
   const root = $('#welcome');
   const hasProjects = realProjects().length > 0;
-  const hints = [['newSession', 'new session'], ['nextSession', 'switch'], ['toggleSidebar', 'sidebar'], ['toggleRside', 'side panel'], ['settings', 'settings']];
-  // Rebuilt only when what it shows changed (git polls call it every few seconds)
-  const key = JSON.stringify([projects, git, stats, usage, Math.floor(Date.now() / 60000), hints.map(([id]) => keyText(id))]);
+  const hints = [['newSession', 'New session'], ['nextSession', 'Switch session'], ['toggleSidebar', 'Sidebar'], ['toggleRside', 'Side panel'], ['settings', 'Settings']];
+  const last = lastConversation();
+  const open = [...new Set([...tabs.values()].map((t) => t.project.path))];
+  // Rebuilt only when what it shows changed (git and session polls call it every few seconds)
+  const key = JSON.stringify([projects, git, stats, usage, open, homeQuery, homeAll, userName, Math.floor(Date.now() / 60000),
+    last && [last.p.path, last.s.id, last.s.title, last.s.last, !!tabOfSession(last.s.id)], hints.map(([id]) => keyText(id))]);
   if (key === lastWelcomeKey) return;
   lastWelcomeKey = key;
-  const hour = new Date().getHours();
+  // Keyboard focus (and the search caret) survive the rebuild
+  const had = document.activeElement?.closest?.('#welcome [data-hk]');
+  const sel = had?.tagName === 'INPUT' ? [had.selectionStart, had.selectionEnd] : null;
+  const now = new Date();
+  const hour = now.getHours();
+  const hello = hour < 5 ? 'Up late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   root.replaceChildren(
     h('div', { class: 'welcome-inner' },
-      h('div', { class: 'welcome-hero' },
-        h('div', { class: 'big-logo', html: LOGO_IMG }),
-        h('div', { class: 'hello' }, hour < 5 ? 'Up late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'),
-        h('h1', {}, 'What should we build?'),
-        h('p', {}, hasProjects ? 'Pick a project to start a Claude session.' : 'Add a project folder to get started.')),
-      h('div', { class: 'welcome-grid' },
-        h('div', { class: 'welcome-main' },
-          hasProjects // Chats alone doesn't count: keep the Add project button until there is a real one
-            ? h('div', { class: 'proj-list' },
-                h('div', { class: 'proj-head' },
-                  h('div', { class: 'proj-label' }, 'Projects'),
-                  h('button', { class: 'btn ghost sm', onclick: addProjects }, ico('folderPlus'), 'Add project')),
-                h('div', { class: 'proj-card' },
-                  projects.some((p) => p.chat) ? null : h('div', { class: 'proj', onclick: openChat },
-                    h('span', { class: 'proj-ico' }, ico('chat')),
-                    h('div', { class: 'proj-main' },
-                      h('div', { class: 'p-name' }, 'No project'),
-                      h('div', { class: 'p-path' }, 'Chat outside your projects')),
-                    h('span', { class: 'proj-go' }, ico('arrowRight'))),
-                  projects.map((p) =>
-                    h('div', { class: 'proj', onclick: () => focusProject(p) },
-                      h('span', { class: 'proj-ico' }, ico(p.chat ? 'chat' : 'folder')),
-                      h('div', { class: 'proj-main' },
-                        h('div', { class: 'p-name' }, projName(p)),
-                        h('div', { class: 'p-path' }, h('bdi', {}, p.path))),
-                      p.chat ? null : h('div', { class: 'p-git' }, gitPills(git[p.path])),
-                      h('span', { class: 'proj-go' }, ico('arrowRight'))))))
-            : h('div', { class: 'welcome-acts' },
-                h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
-                h('button', { class: 'btn outline', onclick: openChat }, ico('chat'), 'Chat without a project')),
-          homeUsage()),
-        h('div', { class: 'welcome-side' }, homeActivity())),
-      h('div', { class: 'hint' },
-        hints.map(([id, label]) => (keyText(id) ? h('span', {}, h('kbd', {}, keyText(id)), ` ${label}`) : null)))));
+      h('header', { class: 'welcome-hero' },
+        h('div', {},
+          h('div', { class: 'hello' }, userName ? `${hello}, ${userName}` : hello),
+          h('h1', {}, hasProjects ? 'Back to your work.' : 'What should we build?'),
+          h('p', {}, hasProjects ? 'Pick up a conversation or start something new.' : 'Add a project folder to get started.')),
+        h('span', { class: 'home-today' }, now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }))),
+      h('div', { class: 'welcome-main' },
+        homeResume(last),
+        hasProjects // Chats alone doesn't count: keep the Add project button until there is a real one
+          ? homeProjectList()
+          : h('div', { class: 'welcome-acts' },
+              h('button', { class: 'btn primary', onclick: addProjects }, ico('folderPlus'), 'Add project'),
+              h('button', { class: 'btn outline', onclick: openChat }, ico('chat'), 'Chat without a project'))),
+      h('aside', { class: 'welcome-side' }, homeActivity(), homeUsage())),
+    h('div', { class: 'hint' },
+      hints.map(([id, label]) => (keyText(id) ? h('span', {}, h('kbd', {}, keyText(id)), ` ${label}`) : null))));
+  if (had) {
+    const el = [...root.querySelectorAll('[data-hk]')].find((e) => e.dataset.hk === had.dataset.hk); // paths would need escaping in a selector
+    el?.focus();
+    if (el && sel) el.setSelectionRange(...sel);
+  }
 }
 
 // -------------------------------------------------------------- settings ----
@@ -4057,6 +4150,7 @@ async function pollSessions(all = true) {
     renderSidebar();
     renderFoot();
     renderRside();
+    renderWelcome(); // the last conversation card
     pollInfo();
   } finally {
     sessionsBusy = false;
@@ -4276,6 +4370,7 @@ async function init() {
   const state = await api.getState();
   projects = state.projects;
   chatInfo = state.chat;
+  userName = state.user || '';
   ui = state.ui;
   ui.collapsed ||= [];
   document.documentElement.style.setProperty('--zoom', ui.zoom || 1);

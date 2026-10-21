@@ -100,7 +100,7 @@ gradients, no glows, no tinted cards.
 - UI font: **Segoe UI Variable** (`"Segoe UI Variable Text", "Segoe UI", system-ui`). This is a tweak: shadcn uses
   Geist, but bundling it isn't worth it on Windows. On macOS `system-ui` resolves to San Francisco.
 - Compact scale (a tweak; shadcn's base is 14 px): **13 px** body, 12 px small / labels, 11 px meta, 14 px
-  dialog/section emphasis, 18 px dialog title (`text-lg`), 30 px welcome h1 (`text-3xl`, semibold, `tracking-tight`).
+  dialog/section emphasis, 18 px dialog title (`text-lg`), 32 px welcome h1 (`text-3xl`, semibold, `tracking-tight`).
 - Weights: 400 body, 500 for project names, active rows, buttons and labels, 600 for titles.
 - Labels are **sentence case** (shadcn `SidebarGroupLabel`: 12 px, 500, `--muted-foreground`). No uppercase
   tracking-widened labels.
@@ -325,23 +325,39 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 - `:focus-within`: border `--ring` + ring shadow.
 
 ### Welcome screen
-- Centered column (max 680), logo (44 px, `shadow-md`), "What should we build?" (32 px h1), one muted line, then the
-  projects as one bordered card (`rounded-xl`, 1 px `--border`, `shadow-sm`, same recipe as a settings card) under a
-  "Projects" label with a ghost sm "Add project" button on its right. `.proj` rows are 1 px `--border`-separated:
-  36 px `--muted` icon tile (folder, chat for Chats), name (14 px / 500) + path (11 px `--faint`) left, git info
-  (12 px; none for Chats) and an arrow that slides in on hover right; hover bg `--accent` 60 %. Shortcuts are one
-  quiet centered `kbd` line at the bottom, sticky (`bottom: 0` on `--background`) so it stays on screen while the page
-  scrolls. Above the h1 a 13 px `--faint` time-of-day greeting. The page fades and
-  rises 6 px in when it is shown (0.35 s, none with reduced motion; on `#welcome` itself, so re-renders don't replay it).
-- Under the projects, **Plan usage** (the footer's limits as `meter big` rows: label, 11 px `--faint` reset text and
-  % (warn/crit colors) on one line, the meter under it). Beside them **Activity** (container query on `#welcome`: from
-  760 px a 340 px right column, max width 1000, stretched so its card ends where Plan usage does, the spare height
-  spread between its parts; below that stacked last). Section heads are 36 px tall with or without a button, so the
-  cards' tops line up. Both are a `proj-card` with 16 px padding under a `proj-label` head (meta right, 11 px
-  `--faint`). Activity: 2x2 totals (22 px / 600 tabular value, 12 px muted label, 11 px faint sub; 4 across while
-  stacked at 560 px+), a 1 px divider, then an 18-week messages-per-day map (Monday on top, 2 px rounded squares,
-  `--muted` empty, then `--primary` mixed into `--muted` at 38 / 60 / 80 / 100 %: the shade is data, so it may use the
-  accent; today ringed with `--ring`), its "Busiest around …" / Less-More legend line and an "Updated <date>" line.
+
+The "Workbench" direction of `mockups/home` (standalone proposals with sample data; not packaged). No cards except the
+last-conversation box: sections are separated by 1 px `--border` rules and a column rule.
+
+- Left-aligned header (max width 1040): a 12 px muted time-of-day greeting with the OS user name ("Good afternoon,
+  Aalish"; main's `state:get` `user`, left out when empty), "Back to your work." (32 px / 600 h1; "What should we
+  build?" with no projects), one 13 px muted line; today's date (11 px mono `--faint`) bottom-right, hidden when stacked.
+  No logo. The page fades and rises 6 px in when shown (0.35 s, none with reduced motion; on `#welcome` itself, so
+  re-renders don't replay it).
+- **Last conversation** (the newest transcript of any project by last message): a `rounded-lg` 1 px `--border` box on
+  `--muted` 15 % over `--background`, 20 px terminal icon, "Last conversation · 12 minutes ago" (11 px), the session
+  title (14 px / 500), "project · branch" (11 px), and an outline "Continue →" button ("Open" when a tab shows it).
+- **Projects**: a 13 px / 600 head with the row count (11 px mono `--faint`) and a ghost sm "+ Add project"; a 36 px
+  search field (1 px `--border`, `rounded-md`, `--ring` + focus ring on focus, the match count on its right; Enter opens
+  the first match, Esc clears); flat `.proj` button rows (62 px, 1 px `--border` under each, hover/focus = `--accent`
+  60 % with rounded corners): 18 px icon (folder, `terminal` while the project has an open tab, chat for Chats), name
+  (14 px / 500) + path (11 px `--faint`), git on two right-aligned lines (branch muted, then `N changed` in
+  `--warning` / clean / ahead-behind; one line without a repo; "No project needed" for Chats), an arrow that slides in
+  on hover. Sidebar order, Chats last. Six rows, then a ghost "Show N more projects ⌄" that opens in place (a search
+  shows every match), then an 11 px `--faint` centered caption.
+- Right column (container query on `#welcome`: from 760 px `.welcome-inner` is a grid and the column spans the header
+  rows too, so it starts at the top of the page and the page stays short; 284 px wide, 48 px gap, a 1 px `--border`
+  rule on its left and 28 px padding; each column only as tall as its content, `align-items: start`; below 760 px it
+  stacks under the projects with a top rule). Windows under 940 px tall get tighter gaps, a 28 px h1 and 54 px rows,
+  so six projects fit without scrolling at 900 px. **Your activity**: 2x2 totals (24 px / 500 tabular value, an 11 px muted unit for the
+  streak, 12 px muted label, 11 px faint sub; 4 across while stacked at 560 px+), a 1 px rule, month labels (10 px
+  mono, `monthLabels` in lib/ui.js), the 18-week messages-per-day map (Monday on top, 2 px rounded squares, `--muted`
+  empty, then `--primary` mixed into `--muted` at 38 / 60 / 80 / 100 %: the shade is data, so it may use the accent;
+  today ringed with `--ring`; max 340 px stacked), a right-aligned Less-More legend, then "Busiest around …" /
+  "Updated <date>". **Plan usage** under a rule: per limit the label and % (12 px mono, warn/crit colors) on one line,
+  a 4 px meter on `--muted`, the reset time (11 px `--faint`) under it.
+- Shortcuts: one quiet centered `kbd` line at the bottom of the page (`margin-top: auto`), under the content when it
+  scrolls; it never covers a row.
 
 ### Popover: shadcn `Popover`
 - `#detail` and the exit `.overlay`: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 12–16.
@@ -376,7 +392,7 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 - One exception: the top bar's "Open in VS Code" button shows the official VS Code logo in its own blues
   (`VSCODE_SVG` in renderer.js), because it stands for that app. No other icon gets brand color; the Update
   button's `--primary` tint is the accent, not a brand color, and it only appears when there is something to do.
-- Logo: a flat black rounded tile with five white lines of text whose lengths form an S, the last one ending in a blue block cursor (`#4f7be0`, fixed: the icon doesn't follow `ui.accent`), no gradients. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px) and welcome screen (56 px). Both get a 1 px `--border` ring (`box-shadow`, `border-radius: 22%` = the icon's corner), so the black tile still reads on the dark theme; on light it vanishes into the tile's edge.
+- Logo: a flat black rounded tile with five white lines of text whose lengths form an S, the last one ending in a blue block cursor (`#4f7be0`, fixed: the icon doesn't follow `ui.accent`), no gradients. `LOGO_IMG` in renderer.js uses `assets/icon.png` in the sidebar (20 px). It gets a 1 px `--border` ring (`box-shadow`, `border-radius: 22%` = the icon's corner), so the black tile still reads on the dark theme; on light it vanishes into the tile's edge.
 
 ## 4. Layout and behavior (tweaks kept from before)
 

@@ -306,3 +306,12 @@ test('activityGrid: Monday-first weeks ending on today, levels on a square-root 
   assert.equal(g[1][2], null);
   assert.equal(ui.activityGrid([], '2026-10-20', 1)[0][0].level, 0);
 });
+
+test('monthLabels: a label at each month start, too-close ones give way, none in the last column', () => {
+  const g = ui.activityGrid([], '2026-10-21', 18); // starts Monday Jun 22; Jul 1 is in column 1
+  assert.deepEqual(ui.monthLabels(g), [
+    { col: 1, month: '2026-07' }, { col: 5, month: '2026-08' }, { col: 10, month: '2026-09' }, { col: 14, month: '2026-10' },
+  ]);
+  assert.deepEqual(ui.monthLabels(ui.activityGrid([], '2026-11-03', 3)), [{ col: 1, month: '2026-11' }]);
+  assert.deepEqual(ui.monthLabels(ui.activityGrid([], '2026-10-20', 1)), []);
+});
