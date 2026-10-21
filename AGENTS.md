@@ -168,16 +168,23 @@ site/            the product page (static, open index.html or serve the folder; 
   - Notifications: plain Electron `Notification` (no registry step). An unsigned app may show as "Electron" from
     `npm start`; if the user denied permission nothing shows and `notify` swallows any error.
   - Packaged update: `/bin/bash update.sh` detached with the login shell's PATH (after `shellEnvReady`); waits on the
-    pid with `kill -0` (20 s, then `kill -9` on that pid only); reopens the bundle (`execPath` three levels up) with `open`. No visible window, so the log is it.
-  - Install: `install.sh` builds into `~/.stanza` and links `~/Applications/Stanza.app` to the built bundle
-    (the .app must stay in the clone for `repoDir()`); a real app already at that path is left alone. Untested on a Mac.
+    pid with `kill -0` (20 s, then `kill -9` on that pid only); after the build, moves `dist/mac*/Stanza.app` over the
+    bundle it was started from (`execPath` three levels up) when that is outside `dist/`, or over an older install's
+    `~/Applications/Stanza.app` link into this clone's `dist/`; never over a bundle whose id isn't `com.local.stanza`.
+    Reopens it with `open`. No visible window, so the log is it.
+  - Install: `install.sh` clones into `~/.stanza` and moves the built bundle to `~/Applications/Stanza.app` (a real
+    app, not a link: Spotlight and Launchpad skip links and hidden folders, so a link into `~/.stanza` was never found).
+    It replaces an earlier copy or link there, but not another app (bundle id). The copy finds its clone through
+    `stanzaRepo`, which `package:mac` writes into the packaged package.json (`-c.extraMetadata`, `$PWD`); `repoDir()`
+    reads it when walking up finds no clone. Untested on a Mac.
   - Shortcuts: the `SHORTCUTS` defaults use `M` = Cmd and `JUMP` = Cmd (Windows: Ctrl / Alt); `comboText` draws ⌃⌥⇧⌘,
     and the recorder reads `e.code`, so Option's special characters don't matter. `Cmd+Alt+arrows` resizes panes.
   - Terminal: `macOptionIsMeta` (Claude's Option shortcuts), `rightClickSelectsWord: false` (right-click pastes);
     the custom Ctrl+C/V handler is skipped. Labels say "Shell" / "Finder"; tooltips go through `kbd()` (⌘ ⇧ ⌥).
 - **Git**: `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, polled from the renderer: the active project every 4 s (8 s while the window is visible but unfocused, `idle()`), all projects every 20 s (and on focus).
 - **Update** (people install by cloning): `repoDir()` = the app folder for `npm start`, or the repo above `dist/` for a
-  packaged build (walks up to a `.git` + `package.json` named `stanza`; a `.app` copied elsewhere finds none).
+  packaged build (walks up to a `.git` + `package.json` named `stanza`; on macOS a `.app` outside the clone falls back
+  to the `stanzaRepo` path built into it, see "Install").
   `checkUpdate` runs `git fetch` + `rev-list --count HEAD..@{u}` 10 s after start and every 30 min (and on demand via the footer's update button, `#update-slot` / `updateBtn` / `checkNow`, which
   reports "up to date" or git's error, `error` in the result, in `#update-pop`; skipped while
   hidden; `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` so no credential prompt). If behind, the same

@@ -1245,22 +1245,32 @@ function runFull(file, args, opts = {}) {
 // Never let git open a credential prompt or window from the background check.
 const gitEnv = () => ({ ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
 
-/** The checkout the app runs from: the app folder (npm start), or the repo above dist/ for a packaged build. */
+/**
+ * The checkout the app runs from: the app folder (npm start), or the repo above dist/ for a packaged build. A macOS
+ * build moved out of the clone (install.sh puts it in ~/Applications, where Spotlight finds it) uses the clone path
+ * that `npm run package:mac` wrote into its package.json (`stanzaRepo`).
+ */
 let repoDirCache;
 function repoDir() {
   if (repoDirCache !== undefined) return repoDirCache;
   repoDirCache = null;
+  const isRepo = (dir) => {
+    try {
+      return fs.existsSync(path.join(dir, '.git')) && JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name === 'stanza';
+    } catch { return false; } // no package.json here
+  };
   let dir = app.isPackaged ? path.dirname(process.execPath) : app.getAppPath();
   for (let i = 0; i < 8; i++) {
-    try {
-      if (fs.existsSync(path.join(dir, '.git')) && JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name === 'stanza') {
-        repoDirCache = dir;
-        break;
-      }
-    } catch { /* no package.json here */ }
+    if (isRepo(dir)) return (repoDirCache = dir);
     const up = path.dirname(dir);
     if (up === dir) break;
     dir = up;
+  }
+  if (IS_MAC && app.isPackaged) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')).stanzaRepo;
+      if (typeof saved === 'string' && path.isAbsolute(saved) && isRepo(saved)) repoDirCache = saved;
+    } catch { /* an older build: no saved path */ }
   }
   return repoDirCache;
 }

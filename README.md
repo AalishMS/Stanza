@@ -87,9 +87,9 @@ curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/instal
 ```
 
 It clones the repo, builds the app and opens it. Windows installs to `%LOCALAPPDATA%\Programs\stanza` with
-Desktop and Start menu shortcuts; macOS installs to `~/.stanza` with a link in `~/Applications`. Set
-`STANZA_DIR` first to pick another folder. Running the line again updates that copy. To uninstall, delete the
-folder and the shortcuts (or the link).
+Desktop and Start menu shortcuts; macOS clones to `~/.stanza` and puts the app in `~/Applications`, where Spotlight
+finds it. Set `STANZA_DIR` first to pick another folder for the clone. Running the line again updates that copy. To
+uninstall, delete the folder and the shortcuts (on macOS, `~/Applications/Stanza.app`).
 
 ### Manual install
 
@@ -165,6 +165,9 @@ git pull --ff-only
 npm install
 npm run package          # macOS: npm run package:mac
 ```
+
+On macOS the build lands in `dist/`; if you installed with the install line, run that line again instead, which also
+moves the new build to `~/Applications`.
 
 The first line drops npm's local changes to the lockfile, which would otherwise block the pull. If the Update button
 fails with "Your local changes to the following files would be overwritten by merge: package-lock.json", run these

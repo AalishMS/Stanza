@@ -41,5 +41,27 @@ npm install || finish "npm install failed (see above). Run it in the repo folder
 echo "> npm run package:mac"
 npm run package:mac || finish "The build failed (see above). Run npm run package:mac in the repo folder to retry."
 
+# The build lands in dist/. An app outside the clone (install.sh's ~/Applications/Stanza.app) gets it moved over it;
+# the link older installs made in ~/Applications is replaced by the app itself, so Spotlight finds it. An app run
+# from dist/ was rebuilt in place.
+BUILT=""
+for a in "$REPO"/dist/mac*/Stanza.app; do [ -d "$a" ] && BUILT="$a" && break; done
+[ -n "$BUILT" ] || finish "The build finished but Stanza.app was not found under $REPO/dist."
+LINK="$HOME/Applications/Stanza.app"
+TARGET=""
+case "$APP" in
+  "$REPO/dist/"*) [ -L "$LINK" ] && case "$(readlink "$LINK")" in "$REPO/dist/"*) TARGET="$LINK" ;; esac ;;
+  *) TARGET="$APP" ;;
+esac
+if [ -n "$TARGET" ]; then
+  # Same check as install.sh: never replace another app.
+  ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TARGET/Contents/Info.plist" 2>/dev/null)
+  [ -L "$TARGET" ] || [ "$ID" = com.local.stanza ] || finish "$TARGET is not Stanza; left it alone. The new build is in $BUILT."
+  echo "> move the build to $TARGET"
+  rm -rf "$TARGET.new" && mv "$BUILT" "$TARGET.new" && rm -rf "$TARGET" && mv "$TARGET.new" "$TARGET" \
+    || finish "Could not move the new build to $TARGET (see above). Run the installer again to fix it."
+  APP="$TARGET"
+fi
+
 echo "Updated."
 finish ""

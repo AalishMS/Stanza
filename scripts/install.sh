@@ -1,12 +1,13 @@
 #!/bin/bash
-# Installs Stanza (macOS): clones the repo, builds the app and links it into ~/Applications. Running it again
+# Installs Stanza (macOS): clones the repo, builds the app and moves it to ~/Applications. Running it again
 # updates that copy. Meant to be piped from the web:
 #
 #   curl -fsSL https://raw.githubusercontent.com/AalishMS/Stanza/main/scripts/install.sh | bash
 #
-# Installs to ~/.stanza, or to $STANZA_DIR if set. The .app stays inside the clone (the Update button
-# finds the repo by walking up from it), so ~/Applications only gets a link. Everything is in main(), called on the
-# last line, so a download cut short runs nothing.
+# Clones to ~/.stanza, or to $STANZA_DIR if set. The app itself goes to ~/Applications/Stanza.app, not a link into the
+# clone: Spotlight and Launchpad skip links and hidden folders like ~/.stanza. The build records the clone's path
+# (package.json's stanzaRepo), so its Update button still finds it. Everything is in main(), called on the last line,
+# so a download cut short runs nothing.
 
 set -e
 
@@ -29,8 +30,10 @@ main() {
   command -v claude >/dev/null \
     || printf '\033[33mNote: the claude CLI was not found. Install it and log in before opening a session: https://claude.com/claude-code\033[0m\n'
 
-  # The app can't be rebuilt while it runs. Matched on this install's path, never on the name.
-  pgrep -f "$DIR/dist/" >/dev/null && fail "Stanza is running from this install. Quit it and run this again."
+  # The app can't be rebuilt or replaced while it runs. Matched on this install's paths, never on the name.
+  TARGET="$HOME/Applications/Stanza.app"
+  pgrep -f "$DIR/dist/" >/dev/null || pgrep -f "$TARGET/Contents/MacOS/" >/dev/null \
+    && fail "Stanza is running from this install. Quit it and run this again."
 
   if [ -d "$DIR/.git" ]; then
     cd "$DIR"
@@ -62,17 +65,20 @@ main() {
 
   # The link from when the app was called Claude Bench points at a bundle the build no longer makes.
   [ -L "$HOME/Applications/Claude Bench.app" ] && rm -f "$HOME/Applications/Claude Bench.app"
-  LINK="$HOME/Applications/Stanza.app"
-  if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then
-    printf '\033[33m%s is a real app, not a link to this install; left it alone.\033[0m\n' "$LINK"
+  # Replaces an earlier copy of Stanza or the link older installs made, never another app (same steps in update.sh).
+  ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TARGET/Contents/Info.plist" 2>/dev/null || true)
+  if [ -e "$TARGET" ] && [ ! -L "$TARGET" ] && [ "$ID" != com.local.stanza ]; then
+    printf '\033[33m%s is another app; left it alone. Open Stanza from %s\033[0m\n' "$TARGET" "$APP"
   else
-    mkdir -p "$HOME/Applications" && ln -sfn "$APP" "$LINK" \
-      || printf '\033[33mCould not link the app into ~/Applications; open it from %s\033[0m\n' "$APP"
+    mkdir -p "$HOME/Applications" && rm -rf "$TARGET.new" && mv "$APP" "$TARGET.new" \
+      && rm -rf "$TARGET" && mv "$TARGET.new" "$TARGET" \
+      || fail "Could not move Stanza.app to ~/Applications (see above). Run this again to retry."
+    APP="$TARGET"
   fi
 
-  printf '\n\033[32mStanza is installed in %s\033[0m\n' "$DIR"
-  echo "Open it from ~/Applications (drag it to the Dock to keep it). It updates itself from the Update button; running this command again does the same."
-  echo "To uninstall, delete that folder and ~/Applications/Stanza.app."
+  printf '\n\033[32mStanza is installed in %s\033[0m\n' "$APP"
+  echo "Find it with Spotlight or in ~/Applications (drag it to the Dock to keep it). It updates itself from the Update button; running this command again does the same."
+  echo "To uninstall, delete $DIR and $APP."
   open "$APP"
 }
 

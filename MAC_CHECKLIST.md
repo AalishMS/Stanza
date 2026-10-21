@@ -103,6 +103,17 @@ Apps opened from Finder don't get your shell's PATH, so this checks the fix for 
 - [ ] Claude tabs and the MCP list work in the built app.
 - [ ] If your `~/.zshrc` is slow or asks a question at startup, the first tab still opens within about 5 seconds.
 
+## Install line
+
+- [ ] Run the README's `curl ... | bash` line. Afterwards `ls -l ~/Applications` shows `Stanza.app` as a folder, not
+      a link (no `->`), and `~/.stanza/dist/mac-*/` has no `Stanza.app` left.
+- [ ] Spotlight (⌘Space, "Stanza") and Launchpad find the app (Spotlight can take a minute to index it). It opens.
+- [ ] Its update button works: "You're up to date", not "isn't a git clone".
+- [ ] Run the line again while Stanza is open: it refuses ("Stanza is running from this install"). Quit and run it
+      again: it updates and replaces the app in `~/Applications`.
+- [ ] On an older install (where `~/Applications/Stanza.app` is a link), running the line again replaces the link
+      with the app.
+
 ## Update button
 
 Needs a new commit on `main` to show up.
@@ -116,7 +127,8 @@ Needs a new commit on `main` to show up.
 - [ ] Clicking it and confirming pulls the update and restarts the app.
 - [ ] In the built `.app`, Update… closes the app, and after a minute or two it reopens updated (with your tabs). If it
       doesn't come back, look at `~/Library/Application Support/stanza/update.log` (it opens in TextEdit by
-      itself when a step fails).
+      itself when a step fails). For the app the install line put in `~/Applications`, it reopens from there, and an
+      older install's link there is replaced by the app (check with `ls -l ~/Applications`).
 - [ ] Make a local commit in the repo that clashes with the update, then click Update in the `.app`: the log opens with
       git's message and the old app reopens unchanged.
 
@@ -127,8 +139,8 @@ Needs a new commit on `main` to show up.
       and closes by itself after about 5 seconds (or with OK).
 - [ ] With a new commit on `main`, clicking it opens the "Update available" popup, even if you chose Later before.
 - [ ] Offline (Wi-Fi off), clicking it shows "Couldn't check for updates" with a reason instead of "up to date".
-- [ ] Run from a copy that isn't a git clone (for example a `.app` copied elsewhere): the popup says it isn't a git
-      clone.
+- [ ] Run a build whose clone is gone (build a scratch clone, move its `.app` out, delete the clone): the popup says it
+      isn't a git clone.
 
 ## Updating later
 

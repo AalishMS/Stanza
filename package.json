@@ -9,7 +9,7 @@
     "test": "node --test",
     "check": "npm run lint && npm test",
     "package": "node scripts/rename-handoff.js before && electron-builder --win dir && node scripts/rename-handoff.js after",
-    "package:mac": "node scripts/rename-handoff.js before && electron-builder --mac dir && node scripts/rename-handoff.js after",
+    "package:mac": "node scripts/rename-handoff.js before && electron-builder --mac dir -c.extraMetadata.stanzaRepo=\"$PWD\" && node scripts/rename-handoff.js after",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-shortcut.ps1"
   },
   "license": "MIT",
