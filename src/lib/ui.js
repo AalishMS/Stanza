@@ -301,10 +301,66 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- diff ----
+  /**
+   * What changed inside a removed line `a` that the added line `b` replaced: { pre, suf } = the lengths both share at the
+   * start and at the end, so a[pre, a.length - suf) and b[pre, b.length - suf) are the changed parts. A replaced part
+   * grows to whole words ("bar" -> "baz", not "r" -> "z"); text only inserted (or only removed) could often sit in several
+   * places and is put where it starts after a space or punctuation ("b, " in "a, b, c", not ", b"). Null when they share
+   * under a third of the longer line: then marking the middle would mark nearly all of it.
+   */
+  function inlineChange(a, b) {
+    const max = Math.min(a.length, b.length);
+    let pre = 0;
+    while (pre < max && a[pre] === b[pre]) pre++;
+    let suf = 0;
+    while (suf < max - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
+    if (pre && /[\ud800-\udbff]/.test(a[pre - 1])) pre--; // never split a surrogate pair
+    if (suf && /[\udc00-\udfff]/.test(a[a.length - suf])) suf--;
+    if (pre + suf === a.length && pre + suf === b.length) return null; // the same line
+    const word = (c) => c != null && /[\p{L}\p{N}_$]/u.test(c);
+    if (pre < a.length - suf && pre < b.length - suf) {
+      while (pre > 0 && word(a[pre - 1]) && (word(a[pre]) || word(b[pre]))) pre--;
+      while (suf > 0 && word(a[a.length - suf]) && (word(a[a.length - suf - 1]) || word(b[b.length - suf - 1]))) suf--;
+    } else {
+      const s = a.length > b.length ? a : b; // the side with the extra text, s[pre, pre + len)
+      const len = s.length - pre - suf;
+      let lo = pre;
+      while (lo > 0 && s[lo - 1] === s[lo - 1 + len]) lo--; // as far left as the same text could sit
+      // each place scores for starting and for ending at a space (or the line's edge), less for a word's edge
+      const space = (c) => c == null || /\s/.test(c);
+      const edge = (x, y) => x == null || y == null || word(x) !== word(y);
+      const score = (q) => (space(s[q - 1]) ? 3 : 0) + (edge(s[q - 1], s[q]) ? 1 : 0) + (space(s[q + len]) ? 3 : 0) + (edge(s[q + len - 1], s[q + len]) ? 1 : 0);
+      let best = pre; // ties keep git's choice, the rightmost
+      for (let q = pre - 1; q >= lo; q--) if (score(q) > score(best)) best = q;
+      suf += pre - best;
+      pre = best;
+    }
+    return (pre + suf) * 3 >= Math.max(a.length, b.length) ? { pre, suf } : null;
+  }
+
+  /**
+   * Pairs of a hunk's lines to compare with inlineChange: each run of removed lines followed directly by as many added
+   * lines (line i of one with line i of the other). `lines` keep git's first character; returns [removed, added] indexes.
+   */
+  function linePairs(lines) {
+    const out = [];
+    for (let i = 0; i < lines.length;) {
+      if (lines[i][0] !== '-') { i++; continue; }
+      let j = i;
+      while (j < lines.length && lines[j][0] === '-') j++;
+      let k = j;
+      while (k < lines.length && lines[k][0] === '+') k++;
+      if (k - j === j - i) for (let n = 0; n < j - i; n++) out.push([i + n, j + n]);
+      i = k;
+    }
+    return out;
+  }
+
   const helpers = {
     contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
     jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid,
-    monthLabels,
+    monthLabels, inlineChange, linePairs,
   };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);

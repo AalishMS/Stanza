@@ -92,7 +92,8 @@ those hues, its `[data-accent]` rule swaps that group color for blue, so the fiv
 ### Status colors
 
 Color otherwise only carries meaning: `--success` green = running, `--warning` yellow = uncommitted changes or
-background activity, `--destructive` red = conflicts, destructive actions, critical levels. No decorative color, no
+background activity, `--destructive` red = conflicts, destructive actions, critical levels. In diffs (the Changes page and
+the top bar's `+12 −3`) green and red mean added and removed lines, so they may tint those rows. No decorative color, no
 gradients, no glows, no tinted cards.
 
 ## 2. Typography
@@ -249,7 +250,8 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   pulsing while updating; click opens the update popover's confirm step.
 - **Resizing**: both sidebars are drag-resizable (`.rz` handles, 4 px overlaying the divider with no layout width; hover/drag = `--primary` tint; double-click resets). Left 180–480 (default 232), right 240–600 (default 300), saved as `ui.sidebarW` / `ui.rsideW` and applied to `--sidebar-w` / `--rside-w`. While a markdown tab shows, the right handle sets that width instead: 20–75 % of the window (default 40), `ui.rsideDocPct` -> `--rside-doc-w`, never under 320 px and always leaving the terminal 360 px. Content sits 4 px from the left edge of the sidebar (8 px right).
 - The right sidebar (`#rside`, 300 px by default) uses the `--background` surface (same as the terminal) with a 1 px `--sidebar-border` on its terminal side.
-  It has tabs (see "Tab pill"): its own content below, and one page per open markdown file ("Markdown page").
+  It has tabs (see "Tab pill"): its own content below, one page per open markdown file ("Markdown page"), and the
+  project's Changes ("Changes page").
 - **Right peek** (the right sidebar closed: by hand, by a cramped split, or on the home screen): the left sidebar's "Peek",
   mirrored, with the same spring, timings and outside-the-window hold (144 px past the right edge). The zone is
   `#rpeek-zone`, 2 px on the window's right edge (not 6: the terminal's `.vbar` sits 2-10 px from that edge). The sidebar
@@ -285,8 +287,9 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 ### Tab pill (`#rside-pill`)
 The right sidebar's tab switcher, the one pill in the app (a deliberate exception to "no pills"): floating 14 px above the
 bottom edge, centered, `--popover` with a 1 px `--border`, fully rounded, `shadow-md`, 3 px padding. Shown only while the
-active tab's project has a markdown file open. Slots are 26 px high, fully rounded, `--faint`, hover bg `--accent` +
-`--foreground`: first the sidebar's own tab as a 14 px `panelRight` icon (30 px wide), then a 6 px dot per file in open order.
+active tab's project has a markdown file or its Changes open. Slots are 26 px high, fully rounded, `--faint`, hover bg `--accent` +
+`--foreground`: first the sidebar's own tab as a 14 px `panelRight` icon (30 px wide), then the Changes tab as a 14 px `diff`
+icon (widens on hover to show its 12 px ×, like a dot), then a 6 px dot per file in open order.
 The active slot is `--foreground`, and its dot stretches into an 18 px bar (width transitions with a slight overshoot, so the
 bar seems to travel). A hovered dot widens to show a 12 px × that closes it; the file name is the native tooltip. The pill
 rises in (240 ms) when it appears and a new dot pops in (300 ms); no other motion. Too many dots scroll sideways.
@@ -313,6 +316,25 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
   in the link color; WARNING `--warning`, CAUTION `--destructive` (color = meaning).
 - Task items: the Checkbox recipe at 14 px, read-only, in the bullet's place. Front matter: a bordered grid, keys in
   `--mono` muted. Remote images are never fetched: a dashed `--faint` chip with the alt text links to them; a missing local image is the same chip.
+
+### Changes page (`#rside-diff`)
+The project's uncommitted changes as a unified diff per file, at the markdown page's width (same slide, same resize).
+- Head: the Markdown page's head: "Changes" over `branch · 4 files +120 −30` (counts in `--mono`, `--success` / `--destructive`),
+  then ghost `icon sm` buttons: Collapse all / Expand all (`foldAll` / `unfoldAll` chevrons, with 2+ files that have lines) and ×.
+- Files stacked in path order, each a 34 px header row that sticks to the top while its lines scroll by (opaque
+  `--background`, a 1 px `--border` line under it; hover `--accent` 50 %): a 14 px chevron (turned down while open), the
+  status letter (11 px / 600 `--mono`: M `--warning`, A and U (new, untracked) `--success`, D `--destructive`, R muted),
+  the folder in `--faint` and the file name (12 px / 500; a rename shows `old → new`), `+n −n` (11 px mono), and a ghost
+  `code` button (Open in VS Code at the first change; a 24 px gap for a deleted or binary file). Clicking the row folds it.
+  Lockfiles and files over 400 changed lines start folded. A file without lines (binary, too large, mode change, pure
+  rename, empty) is the header alone, with an 11 px `--faint` note ("binary", "5.4 MB, not shown") and no chevron.
+- Lines: 12 px / 18 px `--mono`, wrapped (`pre-wrap`), two line-number gutters (11 px `--faint`, right-aligned; a click
+  opens the file at that line, hover `--foreground`), a sign column (`+` `--success`, `-` `--destructive`, not selectable).
+  Added rows `--success` 12 %, removed `--destructive` 12 % (gutters 8 % more), context text `--muted-foreground`. The
+  changed part of a replaced line is a `mark` at 30 %. Hunk headers (`@@ -12,7 +12,8 @@` and the function, muted) are a
+  20 px `--muted` 50 % strip; "No newline at end of file" is an 11 px italic `--faint` row.
+- Empty and error states: centered 72 px down, a 20 px `--faint` icon (`check` for "No uncommitted changes", `branch` for
+  "Not a git repository" or a failure), a 13 px / 500 title, a 12 px muted line.
 
 ### DropdownMenu: shadcn `DropdownMenu` (`#menu`)
 - On the Popover recipe: bg `--popover`, 1 px `--border`, `rounded-lg`, `shadow-md`, padding 4, min-width 210.
@@ -402,10 +424,12 @@ last-conversation box: sections are separated by 1 px `--border` rules and a col
   around the work rather than a panel competing with it (a tweak: shadcn's sidebar is the lighter side).
 - Two columns: the full-height sidebar, then the workspace (top bar, terminal + right sidebar, status bar). The top
   bar and status bar never run under the sidebar.
-- Top bar 40 px (draggable; new-session `+` on the left, right-sidebar toggle and the window controls on the right via
+- Top bar 40 px (draggable; new-session `+` on the left, the Changes button (`+12 −3`: a 14 px `diff` icon and the
+  counts in 12 px mono, `--success` / `--destructive`; ghost, `.on` while the Changes page shows, only while the project
+  has changes), right-sidebar toggle and the window controls on the right via
   `titleBarOverlay`). On macOS the traffic lights sit top-left instead (`trafficLightPosition`), so `body.mac` moves the
   room from the top bar's right padding to `#brand`'s left padding, except in full screen, where macOS hides them
-  (`body.fullscreen`, sent by main). Status bar 24 px: git branch, changes and path on the left; the active Claude tab's model,
+  (`body.fullscreen`, sent by main). Status bar 24 px: git branch, changes (a plain text button that opens the Changes page) and path on the left; the active Claude tab's model,
   effort and subagents, then the running count, on the right. There is no separate info bar.
 - **No badges.** Git info is plain text (`main  2 changed`), colored only by meaning.
 - Lists are flat inset rows; nothing wraps or shifts on hover.

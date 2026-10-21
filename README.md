@@ -49,6 +49,10 @@ split panes, git status and a list of the dev servers your sessions started.
 - **Split view.** Up to four sessions on screen at once. Drag a session from the sidebar onto the terminal, or press
   `Ctrl+Shift+→`. You can keep several splits around; each gets its own box in the sidebar.
 - **Git at a glance.** Branch, changed files and ahead/behind for every project.
+- **Diff viewer.** While a project has uncommitted changes, a `+12 −3` button sits in the top bar. Click it (or the
+  change count in the status bar, or press `Ctrl+Shift+G`) and the right sidebar shows every changed file as a diff:
+  added and removed lines, the changed words inside a line, new files included. It follows Claude's edits live.
+  Click a file's header to fold it, or a line number to open the file there in VS Code.
 - **Session details.** Context usage, connected MCP servers, subagents and their prompts, and the images pasted into
   or read by the session.
 - **Running servers.** Dev servers started from the current session show up with their port (on the home screen,
@@ -137,6 +141,7 @@ Things that differ on a Mac:
 - In full screen the traffic lights are hidden, so the sidebar toggle and logo move to the left edge.
 - `⌘Q` and Quit in the Dock ask first only while Claude is working or a dev server started from a tab is running.
 - Markdown tabs work the same; their folder button opens Finder, and Cmd+S saves the editor at once.
+- The diff viewer is `⌘⇧G`; it runs the same `git` as the branch and change count (Xcode's, from `xcode-select --install`).
 - The home screen greets you with your macOS login name (the short one, e.g. "jsmith").
 
 The home screen's design came from the standalone proposals in [mockups/home](mockups/home/README.md) (the
@@ -194,6 +199,7 @@ projects, tabs and settings. On macOS, a Claude Bench icon kept in the Dock need
 | `Ctrl+Shift+\` | Back to one terminal |
 | `Alt+arrows` / `Ctrl+Alt+arrows` | Move focus / resize panes (while split) |
 | `Ctrl+S` / `Ctrl+Shift+S` | Toggle left / right sidebar |
+| `Ctrl+Shift+G` | Show or hide the project's changes (diff viewer) |
 | `Ctrl+K` (or `Ctrl+Shift+F`) | Search sessions |
 | `Ctrl+,` | Settings |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Terminal text size when a terminal has focus, else zoom the whole window |

@@ -315,3 +315,29 @@ test('monthLabels: a label at each month start, too-close ones give way, none in
   assert.deepEqual(ui.monthLabels(ui.activityGrid([], '2026-11-03', 3)), [{ col: 1, month: '2026-11' }]);
   assert.deepEqual(ui.monthLabels(ui.activityGrid([], '2026-10-20', 1)), []);
 });
+
+test('inlineChange: the changed middle of a replaced line, null when little is shared', () => {
+  const mid = (a, b) => { const c = ui.inlineChange(a, b); return c && [a.slice(c.pre, a.length - c.suf), b.slice(c.pre, b.length - c.suf)]; };
+  assert.deepEqual(ui.inlineChange('const a = 1;', 'const a = 2;'), { pre: 10, suf: 1 });
+  assert.deepEqual(mid('foo()', 'foo(x)'), ['', 'x']); // nothing removed, "x" added
+  assert.equal(ui.inlineChange('foo(1)', 'bar(2)'), null);
+  assert.equal(ui.inlineChange('same', 'same'), null);
+  assert.deepEqual(ui.inlineChange('a😀b', 'a😃b'), { pre: 1, suf: 1 }); // never inside a surrogate pair
+  assert.deepEqual(mid('aaa', 'aaaa'), ['', 'a']); // prefix and suffix never overlap
+});
+
+test('inlineChange: whole words replaced, inserted text placed after a space or punctuation', () => {
+  const mid = (a, b) => { const c = ui.inlineChange(a, b); return c && [a.slice(c.pre, a.length - c.suf), b.slice(c.pre, b.length - c.suf)]; };
+  assert.deepEqual(mid('call(bar, 1)', 'call(baz, 1)'), ['bar', 'baz']);
+  assert.deepEqual(mid('x = oldName + 1', 'x = newName + 1'), ['oldName', 'newName']);
+  assert.deepEqual(mid('#a[h], #b-doc[h], #b-pill[h]', '#a[h], #b-doc[h], #b-diff[h], #b-pill[h]'), ['', '#b-diff[h], ']);
+  assert.deepEqual(mid('f(a, c)', 'f(a, b, c)'), ['', 'b, ']);
+  assert.deepEqual(mid('.dot.enter { x }', '.dot.enter, .diff.enter { x }'), ['', ', .diff.enter']);
+  assert.deepEqual(mid('one two three', 'one three'), ['two ', '']); // removed text the same way
+  assert.deepEqual(mid('ab', 'abab'), ['', 'ab']);
+});
+
+test('linePairs: removed runs followed by as many added lines', () => {
+  assert.deepEqual(ui.linePairs([' a', '-b', '-c', '+B', '+C', ' d', '-e', '+E', '+F', '-g', '+G']), [[1, 3], [2, 4], [9, 10]]);
+  assert.deepEqual(ui.linePairs(['+a', '-b', ' c']), []);
+});

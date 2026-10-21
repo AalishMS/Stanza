@@ -45,7 +45,7 @@ same lint + tests and refuses the commit if they fail. It calls eslint and `node
   when data actually changed (`lastSidebarKey`, `JSON.stringify` diffs).
 - **Terminal first.** The terminal gets the space and the focus. Chrome around it stays quiet.
 - **Don't fight Claude Code.** Our shortcuts mostly avoid keys it uses (`Ctrl+B/W/J`...); `Ctrl+T` (new session), `Ctrl+S` (sidebar), `Ctrl+W` (close session; costs Claude's delete-word) and `Ctrl+K` (search sessions; costs Claude's kill-to-end-of-line) are deliberate exceptions. The defaults are `Ctrl+T`, `Ctrl+S`, `Ctrl+W` (also `Ctrl+Shift+W`), `Ctrl+K` (also `Ctrl+Shift+F`), `Ctrl+Shift+S` (servers),
-  `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), and for split view `Ctrl+Shift+→` (new session beside), `Ctrl+Shift+↓` (new session below), `Ctrl+Shift+↑` (new session above), `Ctrl+Shift+/` (take the focused pane out of the split, only while split), `Ctrl+Shift+\` (unsplit),
+  `Ctrl+Tab`, `Alt+1..9`, `Ctrl+,` (settings), `Ctrl+Shift+G` (changes, see "Changes"), and for split view `Ctrl+Shift+→` (new session beside), `Ctrl+Shift+↓` (new session below), `Ctrl+Shift+↑` (new session above), `Ctrl+Shift+/` (take the focused pane out of the split, only while split), `Ctrl+Shift+\` (unsplit),
   `Alt+arrows` (move pane focus) and `Ctrl+Alt+arrows` (move the divider), `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (terminal text size while a terminal has focus, else window zoom). The two arrow shortcuts only act while split; otherwise the keys reach the terminal.
   On macOS the same shortcuts use Cmd (`⌘1..9` / `⌘arrows` for `Alt+1..9` / `Alt+arrows`), so Ctrl stays entirely Claude's; `Ctrl+Tab` stays.
   All of them are editable on the settings page (see "Shortcuts"); never add a hard-coded app shortcut, add a `SHORTCUTS` entry.
@@ -79,6 +79,7 @@ src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeInte
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/lib/parse.js pure parsers for main (git, netstat, lsof/ps, transcripts, mcp list, split remap); no Electron, no fs
 src/lib/images.js  transcript image index (scanImages) for main, plus the .md files a session wrote (`docs`); fs only
+src/lib/diff.js  git diff / numstat / status-path parsers for main's Changes tab (parseDiff, untracked files as addedFile)
 src/lib/md.js    markdown -> plain data (parseMarkdown) for the reader; a <script> before renderer.js like lib/ui.js
 src/lib/ui.js    pure renderer helpers (contextWindow, shortcuts matching, distinctParent, dialogOpen, file links);
                  a <script> before renderer.js (shared globals, listed in renderer.js's `/* global ... -- lib/ui.js */`)
@@ -160,6 +161,8 @@ site/            the product page (static, open index.html or serve the folder; 
   - Markdown tabs (right sidebar): no Mac branch. `fs.watch` on the file's folder; macOS may report no file name, then
     every open file in that folder is re-read. "Show in Finder" via `FILES_APP`, Open in VS Code via `openFileAt`.
     The editor: Cmd+S saves now (`mod(e)`), Cmd+C/V/Z come from the Edit menu roles.
+  - Changes tab: no Mac branch. git runs from the app's PATH like the status poll (`/usr/bin/git` from a Finder launch);
+    `diffAbs` joins the repo root and a file with `/`; the key is `⌘⇧G`.
   - Images (right sidebar): no Mac branch. `nativeImage` decodes the thumbnails, `shell.showItemInFolder` backs "Show in Finder"
     (label via `FILES_APP`); transcript paths are the same as on Windows.
   - Zoom: `setWindowButtonPosition` (y scaled with the zoom) keeps the traffic lights centred; `#brand`'s 72 px padding divides by `--zoom`.
@@ -314,7 +317,7 @@ site/            the product page (static, open index.html or serve the folder; 
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\com.local.stanza` to reset it.
 - **Right sidebar** (`#rside`, toggled by the top-bar button or `Ctrl+Shift+S`, saved as `ui.servers`; `renderRside`): the active tab's
   **Context** (`x / yk` + %; the last reply's usage, or after a `/compact` with no reply yet the `compact_boundary` line's
-  `postTokens`, `parseTail`'s `compacted`), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Docs** (see "Markdown tabs"), **Images**. The sidebar has tabs ("Markdown tabs"); all of this is its own tab, `#rside-panel`.
+  `postTokens`, `parseTail`'s `compacted`), then collapsible sections (`ui.collapsed`): **MCPs**, **Subagents**, **Running**, **Docs** (see "Markdown tabs"), **Images**. The sidebar has tabs ("Markdown tabs", "Changes"); all of this is its own tab, `#rside-panel`.
   While closed (by hand, by `autoRside`, or on the home screen) it **peeks** from the right edge like the left sidebar
   (`rightPeek` = `makePeek`, `#rpeek-zone`, `body.rside-peek`; DESIGN.md "Right peek"). Closed, it is still laid out
   (fixed, off screen, hidden), not `display: none`. `rsideShown()` = in the layout (the toggle, `autoRside`);
@@ -393,6 +396,35 @@ site/            the product page (static, open index.html or serve the folder; 
   `withEol` in lib/ui.js; dirty = value differs from `clean`, so a mixed-ending file isn't rewritten unedited). On
   `md:changed` (`reloadDocEdit`): our own write is ignored (text equals `saved`), anything else replaces the text in place
   (selection and scroll kept) unless typing is pending, then the local text wins and is saved.
+- **Changes** (the diff viewer; "changes" in renderer.js, "diff" in main.js; DESIGN.md "Changes page"): the active tab's
+  project's uncommitted changes, for the whole repo it is in: `git diff <HEAD | empty tree when there is no commit yet>`
+  (index and working tree together, `-M`, explicit `a/` `b/` prefixes and `core.quotepath=false`, so user config can't
+  change the format) plus untracked files (`ls-files --others --exclude-standard`, read by main: the first 300, text up
+  to 512 KB each and 8 MB in all; binary ones and bigger ones are listed without text). `lib/diff.js` parses it
+  (`parseDiff`, 5000 lines per file kept, the rest only counted as `cut`). It is a tab of the right sidebar beside the
+  markdown tabs: `docsBy[project].diff` = open, `active` = `DIFF_TAB` (-2) while it shows, `prev` = the tab to go back to;
+  saved with `state.docs` (main's `saveDocs` / `restorableDocs` keep `diff` and -2), the same `--rside-doc-w` width and
+  slide, and a `diff` icon slot in the pill after the sidebar's own. Opened by the top bar's `#open-diff` (`+12 −3`, shown while the
+  project has changes or the tab shows; `renderDiffBtn`), the status bar's change count, or the `showChanges` key
+  (`toggleDiff`). If the sidebar was closed, opening pins it (`setServers(true)`) and `diffPinned` (that project) makes
+  closing its tab close it again, only when `ui.servers` was off (not when `autoRside` hid it: closing would save it as
+  off); a hand toggle of the sidebar clears that. `prev` follows its file in `closeDoc`, like `active`. Polling: `pollDiff` runs after every `pollGit` (and when the tab
+  or the sidebar comes on screen): `git:diff` while the tab is on screen, else `git:diffstat` (numstat + untracked line
+  counts) for the button, nothing for a clean project. Main caches both per project under a key = that project's last
+  `git status` output (stored by `gitStatus`) + mtime and size of each path it lists (`statusPaths`), for at most
+  `DIFF_TTL` (20 s; an edit inside a new untracked folder only shows as `? folder/`), so a poll with nothing changed runs
+  no git. Status paths are relative to the folder status ran in (`../x` for a project in a repo's subfolder), so they are
+  resolved against the project, not the repo root. A result's `id` (sha1 of the patch and the untracked files read) lets
+  the renderer skip an unchanged one (`{ same: true }`). `renderDiff` rebuilds the
+  page only when the id changes, keeping its scroll (`diffScroll` per project) and the files folded by hand (`diffFolds`;
+  lockfiles and files over 400 changed lines start folded). Lines of a file are built when it is first unfolded. A
+  replaced line's changed part is marked (`linePairs` + `inlineChange` in lib/ui.js: common prefix/suffix, grown to whole
+  words, an insertion slid to start after a space). A click on a line number opens the file there (`api.openFile`, new-side
+  line); a file's `code` button opens it at its first change. Files without lines (binary, too big, mode change, pure
+  rename, a nested repository that `ls-files` lists as `sub/`) are a header with a note. Binary files get no Open button
+  (`openFileAt` hands them to `shell.openPath`, which would start a changed `.exe`). Read-only: no staging, reverting or
+  commenting. Known gaps: a change of line endings only shows identical -/+ rows (`\r` is stripped); the page is rebuilt
+  on every change, so a selection in it is lost when Claude edits a file.
 - **Sessions and usage**: read-only from `~/.claude/projects/<cwd, non-alphanumerics -> "-">/<uuid>.jsonl`. The sidebar lists a
   project's sessions under it (title as in Claude Code: the `/rename` name, `custom-title`, which Claude re-appends like the
   AI title and which is looked for in the head too, else the last `ai-title`, else the first prompt); clicking one focuses its tab or opens

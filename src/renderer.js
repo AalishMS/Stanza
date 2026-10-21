@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels, inlineChange, linePairs -- lib/ui.js */
 /* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
@@ -79,6 +79,9 @@ const ICONS = {
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+  diff: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M9 10h6M12 13V7M9 17h6"/>',
+  foldAll: '<path d="m7 20 5-5 5 5M7 4l5 5 5-5"/>',
+  unfoldAll: '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/>',
 };
 const ico = (name) =>
   h('span', { class: 'ico', html: `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>` });
@@ -142,6 +145,7 @@ const SHORTCUTS = [
     pattern: 'Arrows', keys: [`${M}+Alt+Arrows`], run: (dir) => nudgeSplit(dir) },
   { id: 'toggleSidebar', group: 'Window', label: 'Toggle sidebar', keys: [`${M}+KeyS`, `${M}+Shift+KeyB`], run: () => setSidebar(!ui.sidebar) },
   { id: 'toggleRside', group: 'Window', label: 'Toggle right sidebar', keys: [`${M}+Shift+KeyS`], run: () => setServers(!rsideShown()) },
+  { id: 'showChanges', group: 'Window', label: 'Show changes', hint: 'The project\'s uncommitted changes, in the right sidebar', keys: [`${M}+Shift+KeyG`], run: () => toggleDiff() },
   { id: 'search', group: 'Window', label: 'Search sessions', keys: [`${M}+KeyK`, `${M}+Shift+KeyF`],
     run: () => { setSidebar(true); $('#session-search').focus(); $('#session-search').select(); } },
   { id: 'settings', group: 'Window', label: 'Settings', keys: [`${M}+Comma`], run: () => toggleSettings() },
@@ -1623,7 +1627,7 @@ function autoRside() {
     const cramped = panes.length >= 2;
     // A markdown tab on show counts as asked for: never hidden for room. One shown while it is hidden doesn't bring it
     // back (that would squeeze the panes): it peeks over them instead (openDoc).
-    const doc = !!activeDoc();
+    const doc = !!activeDoc() || diffActive();
     if (!cramped && rsideAuto) { rsideAuto = false; applyRside(ui.servers); return; }
     if (!cramped || rsideForced || doc) return;
     const cols = Math.min(...panes.map((t) => t.term.cols));
@@ -2758,6 +2762,7 @@ function applyKeyTitles() {
   $('#new-tab').title = tip('New session or chat', 'newSession');
   $('#close-tab').title = tip('Close session', 'closeSession');
   $('#toggle-rside').title = tip('Context, MCPs, subagents and running servers', 'toggleRside');
+  renderDiffBtn(true);
 }
 
 /** While recording, every keydown comes here first. Needs a real key with Ctrl, Alt or Cmd/Win (or an F key). */
@@ -2798,13 +2803,14 @@ function renderStatus() {
     if (info) {
       left.append(h('span', { class: 'stat' }, ico('branch'), info.detached ? `@${info.branch}` : info.branch));
       left.append(info.dirty
-        ? h('span', { class: 'stat warn' }, `● ${info.dirty} change${info.dirty === 1 ? '' : 's'}`)
+        ? h('button', { class: 'stat warn stat-btn', title: tip('Show changes', 'showChanges'), onclick: toggleDiff }, `● ${info.dirty} change${info.dirty === 1 ? '' : 's'}`)
         : h('span', { class: 'stat ok' }, '✓ clean'));
       if (info.ahead) left.append(h('span', { class: 'stat info' }, `↑${info.ahead}`));
       if (info.behind) left.append(h('span', { class: 'stat info' }, `↓${info.behind}`));
     }
     left.append(h('span', { class: 'path' }, tab.project.path));
   }
+  renderDiffBtn();
   const running = [...tabs.values()].filter((t) => t.status === 'running').length;
   $('#status-right').replaceChildren(
     h('span', { class: 'stat' }, `${running} session${running === 1 ? '' : 's'} running`));
@@ -3187,9 +3193,11 @@ function openDoc(project, file, anchor = null) {
 function selectDoc(i) {
   const d = docsOf(docProject());
   if (!d || d.active === i) return;
+  if (i === DIFF_TAB) d.prev = d.active; // closing Changes goes back there
   d.active = i;
   saveDocs();
   syncDocs();
+  if (i === DIFF_TAB) pollDiff(); // while another tab showed, only the counts were polled
 }
 
 /** Close a file tab. The active one hands over to its neighbour (right, else left), the last one to the sidebar's own tab. */
@@ -3200,7 +3208,9 @@ function closeDoc(project, file) {
   d.files.splice(i, 1);
   if (d.active === i) d.active = d.files.length ? Math.min(i, d.files.length - 1) : -1;
   else if (d.active > i) d.active--;
-  if (!d.files.length) docsBy.delete(project.path);
+  if (d.prev === i) d.prev = -1;
+  else if (d.prev > i) d.prev--;
+  if (!d.files.length && !d.diff) docsBy.delete(project.path);
   pillEls.delete(`${project.path}\n${docKey(file)}`);
   if (![...docsBy.values()].some((x) => x.files.some((f) => docKey(f) === docKey(file)))) {
     docPages.delete(docKey(file));
@@ -3241,17 +3251,23 @@ let docShown = null; // the file whose page is in #rside-doc
 function syncDocs() {
   const p = docProject();
   const file = activeDoc();
+  const diff = diffActive(p);
+  const wide = !!file || diff; // a file tab or the Changes tab: both at --rside-doc-w
   const body = document.body;
   if (!file && docShown) { keepDocScroll(); docShown = null; dropDocEdit(); } // before it hides: a hidden page has no scroll position
-  if (body.classList.contains('rside-doc') !== !!file) {
-    const set = () => body.classList.toggle('rside-doc', !!file);
+  if (!diff) keepDiffScroll();
+  if (body.classList.contains('rside-doc') !== wide) {
+    const set = () => body.classList.toggle('rside-doc', wide);
     if (rsideOnScreen() && !docBoot) slideRside(set);
     else { set(); requestAnimationFrame(fitActive); }
     autoRside();
   }
-  $('#rside-panel').hidden = !!file;
+  $('#rside-panel').hidden = wide;
   $('#rside-doc').hidden = !file;
+  $('#rside-diff').hidden = !diff;
   renderPill(p, docsOf(p));
+  renderDiffBtn();
+  if (diff) renderDiff();
   const k = file && docKey(file);
   if (file && (!docShown || k !== docKey(docShown) || (!docPages.has(k) && !docLoads.has(k)))) showDocPage(file);
 }
@@ -3494,10 +3510,10 @@ let lastPillKey = '';
 function renderPill(p, d) {
   const pill = $('#rside-pill');
   const files = d?.files || [];
-  const key = JSON.stringify([p?.path, files, d?.active]);
+  const key = JSON.stringify([p?.path, files, d?.active, !!d?.diff]);
   if (key === lastPillKey) return;
   lastPillKey = key;
-  if (!files.length) { pill.hidden = true; return; }
+  if (!files.length && !d?.diff) { pill.hidden = true; return; }
   if (pill.hidden) {
     pill.hidden = false;
     pill.classList.remove('enter');
@@ -3506,9 +3522,16 @@ function renderPill(p, d) {
   }
   const el = (k, make) => { if (!pillEls.has(k)) pillEls.set(k, make()); return pillEls.get(k); };
   const items = [el(`${p.path}\n`, () => h('button', { class: 'pill-home', onclick: () => selectDoc(-1) }, ico('panelRight')))];
-  items[0].classList.toggle('on', d.active < 0);
+  items[0].classList.toggle('on', d.active === -1);
   items[0].title = 'Context, MCPs, subagents and running servers';
-  items[0].setAttribute('aria-current', d.active < 0 ? 'true' : 'false');
+  items[0].setAttribute('aria-current', d.active === -1 ? 'true' : 'false');
+  if (d.diff) { // the Changes tab: an icon, which widens on hover to show its ×
+    const b = el(`${p.path}\n:diff`, () => h('button', { class: 'pill-diff enter', title: 'Changes', 'aria-label': 'Changes', onclick: () => selectDoc(DIFF_TAB), onanimationend: (e) => e.currentTarget.classList.remove('enter') },
+      ico('diff'), h('span', { class: 'pill-x', role: 'button', title: 'Close changes', onclick: (e) => { e.stopPropagation(); closeDiff(docProject()); } }, ico('x'))));
+    b.classList.toggle('on', d.active === DIFF_TAB);
+    b.setAttribute('aria-current', d.active === DIFF_TAB ? 'true' : 'false');
+    items.push(b);
+  }
   files.forEach((f, i) => {
     const dot = el(`${p.path}\n${docKey(f)}`, () => {
       const b = h('button', {
@@ -3557,6 +3580,308 @@ function docRows(tab, list) {
     ...(list.session.length ? [h('div', { class: 'rsub' }, 'Written in this session'), ...foldRows('docs', list.session.map(row))] : []),
     ...(root.length ? [h('div', { class: 'rsub' }, 'Project'), ...root.map(row)] : []),
   ];
+}
+
+// ---------------------------------------------------------------- changes ----
+// The Changes tab: the active project's uncommitted changes (its repo's working tree and index against HEAD, new files
+// included) as a unified diff per file, like the review panes of Claude desktop or Codex. It is a tab of the right
+// sidebar beside the markdown tabs (docsBy[project].diff, active = DIFF_TAB), at their width. Opened by the top bar's
+// +/- button, the status bar's change count or the showChanges key; when one of them had to open the sidebar, closing
+// the tab closes it again (diffPinned). Main runs git (git:diff, git:diffstat) and caches each result under the status
+// output and the changed files' mtimes, so polling it after every git status poll is cheap; the page is rebuilt only
+// when the diff changed (its id), keeping its scroll and the files folded by hand. Text only becomes text nodes.
+
+const DIFF_TAB = -2; // docsBy[project].active while the Changes tab shows
+const DIFF_FOLD_AT = 400; // changed lines: a bigger file starts folded
+const LOCK_RE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|poetry\.lock|uv\.lock|Gemfile\.lock|composer\.lock|go\.sum)$/;
+const DIFF_STATUS = { M: 'Modified', A: 'Added', D: 'Deleted', R: 'Renamed', U: 'New file, not tracked yet' };
+const diffBy = new Map(); // project path -> git:diff result, while its Changes tab is open
+const statBy = new Map(); // project path -> { files, added, removed } for the top bar's button
+const diffFolds = new Map(); // project path -> Map(file path -> folded) for the files folded or unfolded by hand
+const diffScroll = new Map(); // project path -> scroll position of its page (runtime only)
+let diffOn = null; // the project whose page is in #rside-diff
+let diffPinned = null; // the project whose Changes opened the closed sidebar: closing that tab closes it again
+
+const diffActive = (p = docProject()) => docsOf(p)?.active === DIFF_TAB;
+const diffShown = () => diffActive() && rsideOnScreen();
+const diffBody = () => $('#rside-diff .diff-body');
+function keepDiffScroll() {
+  if (diffOn && diffBody()) diffScroll.set(diffOn, diffBody().scrollTop);
+}
+
+/** Open the project's Changes tab (or switch to it). The sidebar is opened for it when it is closed. */
+function openDiff(p) {
+  let d = docsBy.get(p.path);
+  if (!d) docsBy.set(p.path, (d = { files: [], active: -1 }));
+  if (d.active !== DIFF_TAB) d.prev = d.active; // closing it goes back there
+  d.diff = true;
+  d.active = DIFF_TAB;
+  saveDocs();
+  syncDocs();
+  if (!rsideOnScreen()) {
+    const wasClosed = !ui.servers; // not when a cramped split hid it (autoRside): closing must not save it as closed
+    setServers(true);
+    if (wasClosed) diffPinned = p.path;
+  }
+  pollDiff();
+}
+
+function closeDiff(p) {
+  const d = docsOf(p);
+  if (!d?.diff) return;
+  d.diff = false;
+  if (d.active === DIFF_TAB) d.active = d.prev >= 0 && d.prev < d.files.length ? d.prev : -1;
+  if (!d.files.length) docsBy.delete(p.path);
+  pillEls.delete(`${p.path}\n:diff`);
+  diffBy.delete(p.path);
+  saveDocs();
+  if (diffPinned === p.path) {
+    diffPinned = null;
+    if (d.active === -1 && rsideShown()) setServers(false); // closed before it narrows: no slide
+  }
+  syncDocs();
+}
+
+/** The top bar's button, the status bar's change count and the showChanges key: show the Changes tab, or close it. */
+function toggleDiff() {
+  const p = docProject();
+  if (!p || p.chat) return false;
+  if (diffShown()) closeDiff(p);
+  else openDiff(p);
+}
+
+/** The top bar's "+12 −3" button: shown while the project has changes, or while its Changes tab shows. */
+let lastDiffBtnKey = '';
+function renderDiffBtn(force = false) {
+  const p = docProject();
+  const s = p && !p.chat ? statBy.get(p.path) : null;
+  const on = diffShown();
+  const key = JSON.stringify([s, on]);
+  if (!force && key === lastDiffBtnKey) return;
+  lastDiffBtnKey = key;
+  const btn = $('#open-diff');
+  btn.hidden = !on && !s?.files;
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.replaceChildren(...[ico('diff'), s && h('span', { class: 'd-add' }, `+${s.added}`), s && h('span', { class: 'd-del' }, `−${s.removed}`)].filter(Boolean));
+  btn.title = tip(s ? `Changes: ${s.files} file${s.files === 1 ? '' : 's'}, ${s.added} line${s.added === 1 ? '' : 's'} added, ${s.removed} removed` : 'Changes', 'showChanges');
+}
+
+/**
+ * After every git status poll (and when the tab or the sidebar shows): the whole diff while the Changes tab is on
+ * screen, else just the counts for the button, and nothing for a clean project. One at a time; one asked for meanwhile runs after.
+ */
+let diffBusy = false;
+let diffQueued = false;
+async function pollDiff() {
+  const p = docProject();
+  if (!p || p.chat || document.hidden) return;
+  if (diffBusy) { diffQueued = true; return; }
+  const full = diffShown();
+  if (!full && !git[p.path]?.dirty) { // clean, or not a repo
+    if (statBy.delete(p.path)) renderDiffBtn();
+    return;
+  }
+  diffBusy = true;
+  try {
+    if (full) {
+      const r = await api.gitDiff(p.path, diffBy.get(p.path)?.id || null);
+      if (!r.same && docsOf(p)?.diff) {
+        diffBy.set(p.path, r);
+        if (r.ok) statBy.set(p.path, { files: r.files.length + r.more, added: r.added, removed: r.removed });
+        else statBy.delete(p.path);
+      }
+      renderDiff();
+    } else {
+      const s = await api.diffStat(p.path);
+      if (s.ok) statBy.set(p.path, { files: s.files, added: s.added, removed: s.removed });
+      else statBy.delete(p.path);
+    }
+    renderDiffBtn();
+  } catch { /* the next poll tries again */ } finally {
+    diffBusy = false;
+    if (diffQueued) { diffQueued = false; pollDiff(); }
+  }
+}
+
+let lastDiffKey = '';
+function renderDiff(force = false) {
+  const host = $('#rside-diff');
+  const p = docProject();
+  if (!p || host.hidden) return;
+  const r = diffBy.get(p.path);
+  const key = JSON.stringify([p.path, r ? r.id || r.error || !!r.noRepo : null, git[p.path]?.branch]);
+  if (!force && key === lastDiffKey) return;
+  lastDiffKey = key;
+  const same = diffOn === p.path;
+  if (!same) keepDiffScroll();
+  const top = same ? diffBody()?.scrollTop || 0 : diffScroll.get(p.path) || 0;
+  diffOn = p.path;
+  const files = r?.ok ? r.files : [];
+  const body = h('div', { class: 'diff-body' },
+    !r ? h('div', { class: 'rnote' }, 'Loading…')
+      : r.noRepo ? diffEmpty('branch', 'Not a git repository', 'This tab shows the uncommitted changes of a git repository.')
+      : !r.ok ? diffEmpty('branch', 'Could not read the changes', r.error || '')
+      : !files.length ? diffEmpty('check', 'No uncommitted changes', `Everything is committed${git[p.path]?.branch ? ` on ${git[p.path].branch}` : ''}.`)
+      : [...files.map((f) => diffFile(p, r, f)), r.more ? h('div', { class: 'diff-msg' }, `${r.more} more new file${r.more === 1 ? '' : 's'} not shown.`) : null]);
+  host.replaceChildren(diffHead(p, r), body);
+  body.scrollTop = top;
+}
+
+function diffEmpty(icon, title, line) {
+  return h('div', { class: 'diff-empty' }, ico(icon), h('div', { class: 'diff-empty-title' }, title), h('div', {}, line));
+}
+
+function diffHead(p, r) {
+  const files = r?.ok ? r.files : [];
+  const branch = git[p.path]?.branch;
+  const foldable = files.filter((f) => !diffNote(f));
+  const anyOpen = anyUnfolded(p, foldable);
+  return h('div', { class: 'doc-head' },
+    h('div', { class: 'doc-titles' },
+      h('div', { class: 'doc-title' }, 'Changes'),
+      h('div', { class: 'doc-path diff-sum' },
+        branch ? `${branch} · ` : '',
+        files.length ? [`${files.length} file${files.length === 1 ? '' : 's'} `, h('span', { class: 'd-add' }, `+${r.added}`), ' ', h('span', { class: 'd-del' }, `−${r.removed}`)]
+          : 'Uncommitted changes')),
+    foldable.length > 1 ? h('button', { class: 'btn ghost icon sm diff-foldall', title: anyOpen ? 'Collapse all' : 'Expand all', onclick: () => foldAll(p, foldable, anyUnfolded(p, foldable)) }, ico(anyOpen ? 'foldAll' : 'unfoldAll')) : null,
+    h('button', { class: 'btn ghost icon sm', title: 'Close', onclick: () => closeDiff(p) }, ico('x')));
+}
+
+/** Folded by hand, else by default: lockfiles and big changes start folded. */
+function diffFolded(p, f) {
+  const set = diffFolds.get(p.path);
+  if (set?.has(f.path)) return set.get(f.path);
+  return LOCK_RE.test(f.path) || f.added + f.removed > DIFF_FOLD_AT;
+}
+
+const anyUnfolded = (p, files) => files.some((f) => !diffFolded(p, f));
+
+function setFold(p, f, folded) {
+  if (!diffFolds.has(p.path)) diffFolds.set(p.path, new Map());
+  diffFolds.get(p.path).set(f.path, folded);
+}
+
+function foldAll(p, files, fold) {
+  for (const f of files) setFold(p, f, fold);
+  renderDiff(true);
+}
+
+const diffAbs = (r, rel) => `${r.root}${IS_MAC ? '/' : '\\'}${IS_MAC ? rel : rel.replace(/\//g, '\\')}`;
+/** The first new-side line a file's diff changes, to open it there. */
+function firstChange(f) {
+  const hk = f.hunks[0];
+  if (!hk) return null;
+  let n = hk.n;
+  for (const l of hk.lines) { if (l[0] === '+' || l[0] === '-') return Math.max(1, n); if (l[0] === ' ') n++; }
+  return Math.max(1, hk.n);
+}
+
+/** Why a file has no lines to show, said in its header instead ("binary", "5.4 MB", a mode change...), else null. */
+function diffNote(f) {
+  if (f.binary) return 'binary';
+  if (f.dir) return 'nested repository';
+  if (f.big) return `${f.big < 1024 * 1024 ? `${Math.ceil(f.big / 1024)} KB` : `${(f.big / 1024 / 1024).toFixed(1)} MB`}, not shown`;
+  if (f.skip) return 'could not read it';
+  if (f.hunks.length) return null;
+  return f.mode ? `mode ${f.mode}` : f.status === 'R' ? 'renamed' : 'empty';
+}
+
+/** One file: a sticky header (click folds it) over its lines, built when first unfolded. A file without lines is just the header. */
+function diffFile(p, r, f) {
+  const st = f.untracked ? 'U' : f.status;
+  const name = f.path.split('/').pop();
+  const dir = f.path.slice(0, f.path.length - name.length);
+  const note = diffNote(f);
+  // Nothing to open for a deleted file or a folder, and a binary one is never started from here (a changed .exe would run).
+  const openBtn = f.status !== 'D' && !f.binary && !f.dir
+    ? h('button', { class: 'btn ghost icon sm', title: 'Open in VS Code', onclick: (e) => { e.stopPropagation(); api.openFile(diffAbs(r, f.path), firstChange(f)); } }, ico('code'))
+    : h('span', { class: 'diff-gap' }); // the notes and counts stay aligned
+  const nameEl = h('span', { class: 'diff-name' },
+    f.old ? [h('span', { class: 'diff-dir' }, f.old), h('span', { class: 'diff-arrow' }, '→')] : null,
+    dir ? h('span', { class: 'diff-dir' }, dir) : null,
+    h('span', { class: 'diff-base' }, name));
+  const title = `${f.old ? `${f.old} → ` : ''}${f.path}\n${DIFF_STATUS[st]}`;
+  if (note) {
+    return h('section', { class: 'diff-file' }, h('div', { class: 'diff-fh still', title },
+      h('span', { class: 'ico' }), h('span', { class: `diff-st st-${st}` }, st), nameEl, h('span', { class: 'diff-note' }, note), openBtn));
+  }
+  let folded = diffFolded(p, f);
+  let lines = null;
+  const sec = h('section', { class: `diff-file${folded ? ' folded' : ''}` });
+  const toggle = () => {
+    folded = !folded;
+    setFold(p, f, folded);
+    if (!folded && !lines) sec.append((lines = diffLines(r, f)));
+    sec.classList.toggle('folded', folded);
+    head.setAttribute('aria-expanded', String(!folded));
+    const fold = $('#rside-diff .diff-foldall'); // Collapse all <-> Expand all
+    if (fold) {
+      const anyOpen = anyUnfolded(p, r.files.filter((x) => !diffNote(x)));
+      fold.title = anyOpen ? 'Collapse all' : 'Expand all';
+      fold.replaceChildren(ico(anyOpen ? 'foldAll' : 'unfoldAll'));
+    }
+  };
+  const head = h('div', {
+    class: 'diff-fh', role: 'button', tabindex: '0', 'aria-expanded': String(!folded), title,
+    onclick: toggle, onkeydown: (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(); } },
+  },
+  ico('chevron'),
+  h('span', { class: `diff-st st-${st}` }, st),
+  nameEl,
+  h('span', { class: 'diff-n' }, f.added ? h('span', { class: 'd-add' }, `+${f.added}`) : null, f.removed ? h('span', { class: 'd-del' }, `−${f.removed}`) : null),
+  openBtn);
+  sec.append(head);
+  if (!folded) sec.append((lines = diffLines(r, f)));
+  return sec;
+}
+
+/** A file's hunks: line numbers (old, new; a click on one opens the file there), the code, the changed part of a replaced line marked. */
+function diffLines(r, f) {
+  const box = h('div', { class: 'diff-lines' });
+  const count = (hk, c) => hk.lines.filter((l) => l[0] === ' ' || l[0] === c).length;
+  const last = Math.max(...f.hunks.map((hk) => Math.max(hk.o + count(hk, '-'), hk.n + count(hk, '+'))));
+  box.style.setProperty('--lnw', `calc(${String(last).length}ch + 14px)`);
+  const open = f.status !== 'D';
+  const rows = [];
+  for (const hk of f.hunks) {
+    if (f.status === 'M' || f.status === 'R') {
+      rows.push(h('div', { class: 'dh' }, `@@ -${hk.o},${count(hk, '-')} +${hk.n},${count(hk, '+')} @@`, hk.head ? h('span', { class: 'dh-ctx' }, hk.head) : null));
+    }
+    const marks = new Map(); // line index -> [from, to) of its changed part
+    for (const [i, j] of linePairs(hk.lines)) {
+      const a = hk.lines[i].slice(1);
+      const b = hk.lines[j].slice(1);
+      const ch = a.length + b.length < 4000 && inlineChange(a, b);
+      if (!ch) continue;
+      if (ch.pre < a.length - ch.suf) marks.set(i, [ch.pre, a.length - ch.suf]);
+      if (ch.pre < b.length - ch.suf) marks.set(j, [ch.pre, b.length - ch.suf]);
+    }
+    let o = hk.o;
+    let n = hk.n;
+    hk.lines.forEach((l, i) => {
+      const c = l[0];
+      if (c === '\\') { rows.push(h('div', { class: 'dnote' }, l.slice(2))); return; }
+      const text = l.slice(1);
+      const m = marks.get(i);
+      const code = m ? [text.slice(0, m[0]), h('mark', {}, text.slice(m[0], m[1])), text.slice(m[1])] : text;
+      const cls = c === '+' ? 'add' : c === '-' ? 'del' : 'ctx';
+      const at = Math.max(1, n); // where a click opens the file: the new side
+      rows.push(h('div', { class: `dl ${cls}`, 'data-n': open ? String(at) : null },
+        h('span', { class: 'ln' }, c === '+' ? '' : String(o)),
+        h('span', { class: 'ln' }, c === '-' ? '' : String(n)),
+        h('span', { class: 'dc' }, code)));
+      if (c !== '+') o++;
+      if (c !== '-') n++;
+    });
+  }
+  if (f.cut) rows.push(h('div', { class: 'diff-msg' }, `${f.cut} more line${f.cut === 1 ? '' : 's'} not shown. Open the file to see the rest.`));
+  box.append(...rows);
+  box.addEventListener('click', (e) => {
+    const row = e.target.closest('.ln') && e.target.closest('.dl[data-n]');
+    if (row) api.openFile(diffAbs(r, f.path), +row.dataset.n);
+  });
+  return box;
 }
 
 function renderAll() {
@@ -3805,7 +4130,7 @@ const rightPeek = makePeek({
   side: 'right', el: '#rside', zone: '#rpeek-zone', cls: 'rside-peek', inLayout: () => rsideShown(),
   // a menu, an agent or image dialog opened from it, or the markdown editor in use
   keep: () => !$('#menu').hidden || !$('#modal').hidden || (document.activeElement?.matches('textarea, input') && $('#rside').contains(document.activeElement)),
-  onOut: () => { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }, // closed, nothing was polled
+  onOut: () => { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); pollDiff(); }, // closed, nothing was polled
 });
 const peeks = [leftPeek, rightPeek];
 
@@ -3865,13 +4190,15 @@ function applyRside(open) {
     slideRside(() => { document.body.classList.add('rside-open'); el.style.width = '0px'; void el.offsetWidth; el.style.width = ''; });
   } else document.body.classList.toggle('rside-open', open);
   $('#toggle-rside').classList.toggle('on', open);
-  if (open) { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); }
+  if (open) { renderRside(); pollPorts(); pollMcp(); pollDefinedAgents(); pollInfo(); pollDiff(); }
+  renderDiffBtn();
   requestAnimationFrame(fitActive);
 }
 
 function setServers(open) { // the user's choice for the right sidebar (ui.servers is its saved flag)
   ui.servers = open;
   rsideAuto = false;
+  diffPinned = null; // a choice made by hand stays
   rsideForced = open && visibleIds().length > 1; // reopened by hand in a split: don't hide it again
   api.setUi({ servers: open });
   applyRside(open);
@@ -4117,6 +4444,7 @@ async function pollGit(all = true) {
   } finally {
     gitBusy = false;
     if (gitQueued) { gitQueued = false; pollGit(); }
+    pollDiff(); // the active project's changes: cached in main until the status or a changed file moves
   }
 }
 
@@ -4332,6 +4660,7 @@ function wireGlobalEvents() {
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
   $('#home').addEventListener('click', goHome);
   $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
+  $('#open-diff').addEventListener('click', toggleDiff);
   $('#close-tab').addEventListener('click', () => { if (activeId) closeTab(activeId); });
   $('#split-tab').addEventListener('click', () => (curSplit() ? unsplit() : splitHere()));
   wirePeek();
