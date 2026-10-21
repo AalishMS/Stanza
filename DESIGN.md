@@ -329,7 +329,8 @@ slides (it travels with the edge, no re-wrapping), and terminals keep their size
 The "Workbench" direction of `mockups/home` (standalone proposals with sample data; not packaged). No cards except the
 last-conversation box: sections are separated by 1 px `--border` rules and a column rule.
 
-- Left-aligned header (max width 1040): a 12 px muted time-of-day greeting with the OS user name ("Good afternoon,
+- The page content (max width 1040) is centred vertically while it fits (`margin: auto`), top-aligned once it scrolls.
+- Left-aligned header: a 12 px muted time-of-day greeting with the OS user name ("Good afternoon,
   Aalish"; main's `state:get` `user`, left out when empty), "Back to your work." (32 px / 600 h1; "What should we
   build?" with no projects), one 13 px muted line; today's date (11 px mono `--faint`) bottom-right, hidden when stacked.
   No logo. The page fades and rises 6 px in when shown (0.35 s, none with reduced motion; on `#welcome` itself, so
