@@ -262,11 +262,11 @@ body.sidebar-collapsed .brand-name { display: none; }
    slides in with the edge instead of re-wrapping on every frame. */
 body.rside-doc #rside { width: var(--rside-doc-w); }
 body.rside-sliding #rside { transition: width 280ms cubic-bezier(0.32, 0.72, 0, 1); }
-body.rside-sliding #rside-doc { min-width: calc(var(--rside-doc-w) - 1px); }
+body.rside-sliding #rside-doc, body.rside-sliding #rside-diff { min-width: calc(var(--rside-doc-w) - 1px); }
 #rside-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
 #rside:has(#rside-pill:not([hidden])) #rside-panel { padding-bottom: 60px; }
-#rside-doc { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-#rside-panel[hidden], #rside-doc[hidden], #rside-pill[hidden] { display: none; }
+#rside-doc, #rside-diff { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#rside-panel[hidden], #rside-doc[hidden], #rside-diff[hidden], #rside-pill[hidden] { display: none; }
 /* Collapsed: the sidebar floats in over the terminal (nothing resizes) while the pointer rests on the window's left
    edge (#peek-zone), like Zen browser's compact mode. Below the top bar, so the toggle that pins it stays reachable.
    It slides on a spring driven by renderer.js (makePeek sets transform + visibility inline while out or moving);
@@ -815,15 +815,16 @@ body.settings-open #settings { display: block; }
 #rside-pill button:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 #rside-pill button.on { color: var(--foreground); }
 .pill-home { width: 30px; }
-.pill-home .ico { width: 14px; height: 14px; }
+.pill-home .ico, .pill-diff > .ico { width: 14px; height: 14px; }
+#rside-pill .pill-diff { min-width: 30px; padding: 0 8px; }
 #rside-pill .pill-dot { min-width: 22px; padding: 0 8px; }
 .pill-dot i { display: block; flex: none; width: 6px; height: 6px; border-radius: 3px; background: currentColor; transition: width 260ms cubic-bezier(0.34, 1.4, 0.64, 1); }
 .pill-dot.on i { width: 18px; }
-.pill-dot.enter { animation: dot-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.pill-dot.enter, .pill-diff.enter { animation: dot-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes dot-in { from { transform: scale(0); opacity: 0; } }
 .pill-x { display: inline-flex; width: 0; margin-left: 0; overflow: hidden; color: var(--muted-foreground); transition: width 0.15s, margin-left 0.15s; }
 .pill-x .ico { width: 12px; height: 12px; }
-.pill-dot:hover .pill-x, .pill-dot:focus-visible .pill-x { width: 12px; margin-left: 6px; }
+.pill-dot:hover .pill-x, .pill-dot:focus-visible .pill-x, .pill-diff:hover .pill-x, .pill-diff:focus-visible .pill-x { width: 12px; margin-left: 6px; }
 .pill-x:hover { color: var(--foreground); }
 
 /* A markdown file's page: a header (name, path, actions) over the scrolling article. */
@@ -841,6 +842,72 @@ body.settings-open #settings { display: block; }
   color: var(--foreground); caret-color: var(--primary); font: 12px/1.6 var(--mono); tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere;
 }.doc-missing { font-size: 13px; color: var(--muted-foreground); }
 .doc-missing-path { margin-top: 4px; font: 11px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------- changes --- */
+/* The Changes tab (renderer.js "changes"; DESIGN.md "Changes page"): uncommitted changes as a unified diff per file.
+   Green and red mean added and removed, so they may tint the rows; nothing else gets color. */
+.d-add { color: var(--success); }
+.d-del { color: var(--destructive); }
+#open-diff { gap: 6px; padding: 0 10px; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+#open-diff .ico { width: 14px; height: 14px; }
+#open-diff[hidden], body.no-tabs #open-diff { display: none; }
+.stat-btn { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
+.stat-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+.stat-btn:focus-visible { outline: 0; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+.diff-sum .d-add, .diff-sum .d-del { font-family: var(--mono); }
+/* relative: the files' offsetTop is measured from here (renderer.js diffAnchor, a fold that keeps its header in place) */
+.diff-body { position: relative; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-bottom: 72px; outline: 0; }
+.diff-file { border-bottom: 1px solid var(--border); }
+/* the file's header sticks to the top while its lines scroll by; opaque, so the lines pass under it */
+.diff-fh {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 12px;
+  background: var(--background); box-shadow: 0 1px 0 var(--border); cursor: pointer; outline: 0;
+}
+.diff-file.folded .diff-fh { box-shadow: none; }
+.diff-fh:hover { background: color-mix(in srgb, var(--accent) 50%, var(--background)); }
+.diff-fh:focus-visible { box-shadow: inset var(--focus-ring); }
+.diff-fh > .ico:first-child { width: 14px; height: 14px; color: var(--faint); transform: rotate(90deg); transition: transform 0.15s; }
+.diff-file.folded .diff-fh > .ico:first-child { transform: none; }
+.diff-st { flex: none; width: 12px; font: 600 11px var(--mono); text-align: center; }
+.st-M { color: var(--warning); }
+.st-A, .st-U { color: var(--success); }
+.st-D { color: var(--destructive); }
+.st-R { color: var(--muted-foreground); }
+.diff-name { flex: 1; min-width: 0; display: flex; font-size: 12px; white-space: nowrap; }
+.diff-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--faint); }
+.diff-base { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.diff-n { flex: none; display: flex; gap: 6px; font: 11px var(--mono); font-variant-numeric: tabular-nums; }
+.diff-note { flex: none; font-size: 11px; color: var(--faint); }
+.diff-gap { flex: none; width: 24px; }
+.diff-arrow { flex: none; margin: 0 5px; color: var(--faint); }
+.diff-fh.still { cursor: default; }
+.diff-fh.still:hover { background: var(--background); }
+.diff-file.folded .diff-lines { display: none; }
+.diff-lines { padding: 4px 0; user-select: text; }
+.dl { display: grid; grid-template-columns: var(--lnw) var(--lnw) minmax(0, 1fr); font: 12px/18px var(--mono); }
+.dl .ln { padding: 0 6px; text-align: right; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; user-select: none; }
+.dl[data-n] .ln { cursor: pointer; }
+.dl[data-n] .ln:hover { color: var(--foreground); }
+.dc { position: relative; min-height: 18px; padding: 0 12px 0 20px; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+.dl.ctx .dc { color: var(--muted-foreground); }
+.dl.add .dc::before, .dl.del .dc::before { position: absolute; left: 7px; user-select: none; }
+.dl.add .dc::before { content: "+"; color: var(--success); }
+.dl.del .dc::before { content: "-"; color: var(--destructive); }
+.dl.add { background: color-mix(in srgb, var(--success) 12%, transparent); }
+.dl.del { background: color-mix(in srgb, var(--destructive) 12%, transparent); }
+.dl.add .ln { background: color-mix(in srgb, var(--success) 8%, transparent); }
+.dl.del .ln { background: color-mix(in srgb, var(--destructive) 8%, transparent); }
+.dl mark { color: inherit; border-radius: 2px; }
+.dl.add mark { background: color-mix(in srgb, var(--success) 30%, transparent); }
+.dl.del mark { background: color-mix(in srgb, var(--destructive) 30%, transparent); }
+.dh { margin: 4px 0; padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: color-mix(in srgb, var(--muted) 50%, transparent); color: var(--faint); font: 11px/20px var(--mono); }
+.dh:first-child { margin-top: 0; }
+.dh-ctx { margin-left: 8px; color: var(--muted-foreground); }
+.dnote { padding-left: calc(var(--lnw) * 2 + 20px); font: italic 11px/18px var(--mono); color: var(--faint); }
+.diff-msg { padding: 8px 16px; font-size: 12px; color: var(--faint); }
+.diff-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 72px 24px 0; text-align: center; font-size: 12px; color: var(--muted-foreground); }
+.diff-empty .ico { width: 20px; height: 20px; margin-bottom: 4px; color: var(--faint); }
+.diff-empty-title { font-size: 13px; font-weight: 500; color: var(--foreground); }
 
 /* Markdown typography: the UI's compact scale (13 px body), roomier line height for prose. */
 .md { font-size: 13px; line-height: 1.65; color: var(--foreground); overflow-wrap: break-word; }

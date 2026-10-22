@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('api', {
   onPtyExit: (cb) => on('pty:exit', cb),
 
   gitStatus: (paths) => ipcRenderer.invoke('git:status', paths),
+  diffStat: (cwd) => ipcRenderer.invoke('git:diffstat', cwd),
+  gitDiff: (cwd, have) => ipcRenderer.invoke('git:diff', cwd, have),
   listSessions: (paths) => ipcRenderer.invoke('sessions:list', paths),
   liveSessions: (tabIds) => ipcRenderer.invoke('sessions:live', tabIds),
   sessionInfo: (cwd, sessionId, tabId) => ipcRenderer.invoke('session:info', cwd, sessionId, tabId),

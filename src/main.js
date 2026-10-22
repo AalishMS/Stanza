@@ -12,6 +12,7 @@ const {
   parseAgentFile, parseMcpList, remapSplits, edgeHold, summarizeStats,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
+const { parseDiff, parseNumstat, statusPaths, zList, lineCount, addedFile } = require('./lib/diff');
 
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
 const IS_MAC = process.platform === 'darwin';
@@ -167,9 +168,12 @@ function saveTabs(payload) {
   saveState();
 }
 
+const DIFF_TAB = -2; // renderer.js: a project's `active` while its Changes tab shows
+
 /**
  * The saved markdown tabs that can be reopened: the project is still listed and the file still exists. `active` follows
  * its file, since a dropped file shifts the ones after it; a dropped active file leaves the sidebar's own tab active.
+ * `diff` = the project's Changes tab is open too (active DIFF_TAB while it shows).
  */
 function restorableDocs() {
   const out = {};
@@ -179,9 +183,10 @@ function restorableDocs() {
       const p = state.projects.find((x) => samePath(x.path, proj));
       if (!p || !Array.isArray(d?.files)) continue;
       const files = d.files.filter((f) => typeof f === 'string' && MD_RE.test(f) && isFile(f));
-      if (!files.length) continue;
+      const diff = d.diff === true; // the Changes tab is open
+      if (!files.length && !diff) continue;
       const active = Number.isInteger(d.active) ? d.files[d.active] : null;
-      out[p.path] = { files, active: active ? files.indexOf(active) : -1 };
+      out[p.path] = { files, active: diff && d.active === DIFF_TAB ? DIFF_TAB : active ? files.indexOf(active) : -1, ...(diff ? { diff } : {}) };
     } catch { /* skip this project */ }
   }
   return out;
@@ -191,8 +196,10 @@ function saveDocs(payload) {
   const out = {};
   for (const [proj, d] of Object.entries(payload && typeof payload === 'object' ? payload : {}).slice(0, 200)) {
     const files = (Array.isArray(d?.files) ? d.files : []).filter((f) => typeof f === 'string' && f.length < 1000 && MD_RE.test(f)).slice(0, 500);
-    if (!files.length) continue;
-    out[proj] = { files, active: Number.isInteger(d.active) && d.active >= 0 && d.active < files.length ? d.active : -1 };
+    const diff = d?.diff === true;
+    if (!files.length && !diff) continue;
+    const active = diff && d.active === DIFF_TAB ? DIFF_TAB : Number.isInteger(d.active) && d.active >= 0 && d.active < files.length ? d.active : -1;
+    out[proj] = { files, active, ...(diff ? { diff } : {}) };
   }
   state.docs = out;
   saveState();
@@ -461,7 +468,136 @@ async function gitStatus(cwd) {
   const out = await run('git', ['-C', cwd, 'status', '--porcelain=v2', '--branch'], {
     env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
   });
+  if (out == null) statusOut.delete(cwd);
+  else statusOut.set(cwd, out);
   return out == null ? null : parseGitStatus(out);
+}
+
+// ----------------------------------------------------------------- diff ----
+// The Changes tab (renderer.js "changes"): uncommitted changes against HEAD (index and working tree together), new
+// untracked files included, for the whole repo the project is in. Both calls are polled with the git status, so each
+// result is cached per project under a key: that status output plus the mtime and size of every path it lists. git diff
+// runs again only when the key changes, or after DIFF_TTL (a file edited inside a new folder shows only as "? folder/").
+
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'; // a repo without commits yet diffs against nothing
+const DIFF_TTL = 20000;
+const UNTRACKED_MAX = 300; // untracked files listed
+const UNTRACKED_READ = 512 * 1024; // bytes: a bigger untracked file is listed without its text
+const UNTRACKED_TOTAL = 8 * 1024 * 1024; // bytes read for untracked files per call
+const statusOut = new Map(); // project path -> its last `git status --porcelain=v2` output (gitStatus)
+const gitRoots = new Map(); // project path -> repo top level
+const diffCache = new Map(); // `${kind}\n${project path}` -> { key, at, value }, the newest few
+
+const gitIn = (root, args, opts = {}) => run('git', ['-C', root, ...args], { env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, ...opts });
+
+async function gitRoot(cwd) {
+  if (!gitRoots.has(cwd)) {
+    const out = await run('git', ['-C', cwd, 'rev-parse', '--show-toplevel']);
+    if (!out?.trim()) return null; // not a repo (yet): asked again next time
+    gitRoots.set(cwd, path.resolve(out.trim()));
+  }
+  return gitRoots.get(cwd);
+}
+
+/** An untracked file's text, or why it isn't shown. `budget.left` caps the bytes read per call. */
+function readUntracked(file, budget) {
+  try {
+    const st = fs.statSync(file);
+    if (st.isDirectory()) return { dir: true }; // ls-files lists a nested repository as "sub/"
+    if (!st.isFile()) return { skip: true };
+    if (isBinaryFile(file)) return { binary: true };
+    if (st.size > UNTRACKED_READ || st.size > budget.left) return { big: st.size };
+    budget.left -= st.size;
+    return { text: fs.readFileSync(file, 'utf8') };
+  } catch {
+    return { skip: true };
+  }
+}
+
+/** The cached value for a project when nothing it depends on changed, else `compute(root, base)`'s, stored with its `id`. */
+async function diffCached(kind, cwd, compute) {
+  let out = statusOut.get(cwd);
+  if (out == null) {
+    out = await run('git', ['-C', cwd, 'status', '--porcelain=v2', '--branch'], { env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+    if (out == null) return { ok: false, noRepo: true };
+    statusOut.set(cwd, out);
+  }
+  const root = await gitRoot(cwd);
+  if (!root) return { ok: false, noRepo: true };
+  const stats = statusPaths(out).slice(0, 1000).map((p) => {
+    try {
+      const st = fs.statSync(path.resolve(cwd, p)); // relative to the folder status ran in, not the repo root
+      return `${st.mtimeMs}:${st.size}`;
+    } catch {
+      return '-';
+    }
+  });
+  const key = `${out}\n${stats.join(',')}`;
+  const k = `${kind}\n${cwd}`;
+  const hit = diffCache.get(k);
+  if (hit && hit.key === key && Date.now() - hit.at < DIFF_TTL) return hit.value;
+  const base = /^# branch\.oid \(initial\)$/m.test(out) ? EMPTY_TREE : 'HEAD';
+  const hash = require('crypto').createHash('sha1');
+  const value = await compute(root, base, hash);
+  value.id = (value.hashed ? hash : hash.update(JSON.stringify(value))).digest('hex');
+  delete value.hashed;
+  diffCache.delete(k);
+  diffCache.set(k, { key, at: Date.now(), value });
+  if (diffCache.size > 8) diffCache.delete(diffCache.keys().next().value);
+  return value;
+}
+
+/** For the top bar's button: { ok, files, added, removed } of the uncommitted changes (new files' lines count as added). */
+function diffStat(cwd) {
+  return diffCached('stat', cwd, async (root, base) => {
+    const [num, others] = await Promise.all([
+      gitIn(root, ['diff', base, '--numstat', '-z', '-M', '--no-color', '--no-ext-diff']),
+      gitIn(root, ['ls-files', '--others', '--exclude-standard', '-z']),
+    ]);
+    if (num == null) return { ok: false, error: 'Could not read the changes.' };
+    const list = parseNumstat(num);
+    const extra = zList(others);
+    const budget = { left: UNTRACKED_TOTAL };
+    let added = 0;
+    let removed = 0;
+    for (const f of list) { added += f.added || 0; removed += f.removed || 0; }
+    for (const rel of extra.slice(0, UNTRACKED_MAX)) added += lineCount(readUntracked(path.join(root, rel), budget).text);
+    return { ok: true, files: list.length + extra.length, added, removed };
+  });
+}
+
+/**
+ * The whole diff: { ok, root, files: parseDiff's, then untracked files (`untracked`, their text as one added hunk, or
+ * `binary` / `big` (bytes) / `skip`), sorted by path, each with an `id` of its contents, added, removed, more: untracked
+ * files left out }, or { same: true } when it is still the one the renderer has (`have` = its id).
+ */
+async function gitDiff(cwd, have) {
+  const value = await diffCached('diff', cwd, async (root, base, hash) => {
+    const [patch, others] = await Promise.all([
+      gitIn(root, ['-c', 'core.quotepath=false', 'diff', base, '--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-prefix=b/', '-M'],
+        { timeout: 20000, maxBuffer: 16 * 1024 * 1024 }),
+      gitIn(root, ['ls-files', '--others', '--exclude-standard', '-z']),
+    ]);
+    if (patch == null) return { ok: false, error: 'git diff failed, or its output is over 16 MB.' };
+    const files = parseDiff(patch);
+    const extra = zList(others);
+    const budget = { left: UNTRACKED_TOTAL };
+    hash.update(root).update('\0').update(patch); // the id: what the result is made of, cheaper than the result itself
+    for (const rel of extra.slice(0, UNTRACKED_MAX)) {
+      const u = readUntracked(path.join(root, rel), budget);
+      const f = addedFile(rel.replace(/\/$/, ''), u.text || '');
+      f.untracked = true;
+      if (u.text == null) Object.assign(f, { binary: !!u.binary, big: u.big || 0, skip: !!u.skip, dir: !!u.dir });
+      hash.update('\0').update(rel).update('\0').update(u.text ?? JSON.stringify(u));
+      files.push(f);
+    }
+    files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    // each file's own id: the renderer keeps a file's section on the page while it stays the same
+    for (const f of files) f.id = require('crypto').createHash('sha1').update(JSON.stringify(f)).digest('hex').slice(0, 16);
+    const sum = (k) => files.reduce((n, f) => n + f[k], 0);
+    return { ok: true, hashed: true, root, files, added: sum('added'), removed: sum('removed'), more: Math.max(0, extra.length - UNTRACKED_MAX) };
+  });
+  return value.ok && have && value.id === have ? { same: true } : value;
 }
 
 // ---------------------------------------------------------------- ports ----
@@ -1868,6 +2004,8 @@ function registerIpc() {
     const entries = await Promise.all((paths || []).map(async (p) => [p, await gitStatus(p)]));
     return Object.fromEntries(entries);
   });
+  ipcMain.handle('git:diffstat', (_e, p) => (typeof p === 'string' ? diffStat(p) : { ok: false }));
+  ipcMain.handle('git:diff', (_e, p, have) => (typeof p === 'string' ? gitDiff(p, typeof have === 'string' ? have : null) : { ok: false }));
 
   ipcMain.handle('sessions:list', async (_e, paths) => {
     const entries = await Promise.all((paths || []).map(async (p) => [p, await listSessions(p)]));

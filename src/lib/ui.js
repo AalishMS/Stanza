@@ -301,10 +301,137 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- diff ----
+  /**
+   * What changed inside a removed line `a` that the added line `b` replaced: { pre, suf } = the lengths both share at the
+   * start and at the end, so a[pre, a.length - suf) and b[pre, b.length - suf) are the changed parts. A replaced part
+   * grows to whole words ("bar" -> "baz", not "r" -> "z"); text only inserted (or only removed) could often sit in several
+   * places and is put where it starts after a space or punctuation ("b, " in "a, b, c", not ", b"). Null when they share
+   * under a third of the longer line: then marking the middle would mark nearly all of it.
+   */
+  function inlineChange(a, b) {
+    const max = Math.min(a.length, b.length);
+    let pre = 0;
+    while (pre < max && a[pre] === b[pre]) pre++;
+    let suf = 0;
+    while (suf < max - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
+    if (pre && /[\ud800-\udbff]/.test(a[pre - 1])) pre--; // never split a surrogate pair
+    if (suf && /[\udc00-\udfff]/.test(a[a.length - suf])) suf--;
+    if (pre + suf === a.length && pre + suf === b.length) return null; // the same line
+    const word = (c) => c != null && /[\p{L}\p{N}_$]/u.test(c);
+    if (pre < a.length - suf && pre < b.length - suf) {
+      while (pre > 0 && word(a[pre - 1]) && (word(a[pre]) || word(b[pre]))) pre--;
+      while (suf > 0 && word(a[a.length - suf]) && (word(a[a.length - suf - 1]) || word(b[b.length - suf - 1]))) suf--;
+    } else {
+      const s = a.length > b.length ? a : b; // the side with the extra text, s[pre, pre + len)
+      const len = s.length - pre - suf;
+      let lo = pre;
+      while (lo > 0 && s[lo - 1] === s[lo - 1 + len]) lo--; // as far left as the same text could sit
+      // each place scores for starting and for ending at a space (or the line's edge), less for a word's edge
+      const space = (c) => c == null || /\s/.test(c);
+      const edge = (x, y) => x == null || y == null || word(x) !== word(y);
+      const score = (q) => (space(s[q - 1]) ? 3 : 0) + (edge(s[q - 1], s[q]) ? 1 : 0) + (space(s[q + len]) ? 3 : 0) + (edge(s[q + len - 1], s[q + len]) ? 1 : 0);
+      let best = pre; // ties keep git's choice, the rightmost
+      for (let q = pre - 1; q >= lo; q--) if (score(q) > score(best)) best = q;
+      suf += pre - best;
+      pre = best;
+    }
+    return (pre + suf) * 3 >= Math.max(a.length, b.length) ? { pre, suf } : null;
+  }
+
+  /**
+   * The parts to mark in a removed line `a` and the added line `b` that replaced it: { a: [[from, to], ...], b: [...] },
+   * null when inlineChange finds them too unlike. Inside inlineChange's changed middle, words and single symbols are
+   * compared (longest common subsequence), so two edits in one line get a mark each instead of one spanning the
+   * unchanged text between them; marks under 3 characters apart are joined ("a.b.c", not five marks).
+   */
+  const TOKEN_RE = /[\p{L}\p{N}_$]+|\s+|[^]/gu;
+  function inlineMarks(a, b) {
+    const c = inlineChange(a, b);
+    if (!c) return null;
+    const ea = a.length - c.suf;
+    const eb = b.length - c.suf;
+    if (c.pre === ea || c.pre === eb) return { a: c.pre < ea ? [[c.pre, ea]] : [], b: c.pre < eb ? [[c.pre, eb]] : [] }; // only inserted or removed
+    const ta = a.slice(c.pre, ea).match(TOKEN_RE);
+    const tb = b.slice(c.pre, eb).match(TOKEN_RE);
+    const n = ta.length;
+    const m = tb.length;
+    if (n * m > 40000) return { a: [[c.pre, ea]], b: [[c.pre, eb]] };
+    const w = m + 1;
+    const lcs = new Uint16Array((n + 1) * w); // lcs[x][y]: common tokens of ta[x..] and tb[y..]
+    for (let x = n - 1; x >= 0; x--) {
+      for (let y = m - 1; y >= 0; y--) lcs[x * w + y] = ta[x] === tb[y] ? lcs[(x + 1) * w + y + 1] + 1 : Math.max(lcs[(x + 1) * w + y], lcs[x * w + y + 1]);
+    }
+    const out = { a: [], b: [] };
+    const mark = (list, from, to) => {
+      const last = list[list.length - 1];
+      if (last && from - last[1] < 3) last[1] = to;
+      else list.push([from, to]);
+    };
+    for (let x = 0, y = 0, pa = c.pre, pb = c.pre; x < n || y < m;) {
+      if (x < n && y < m && ta[x] === tb[y]) { pa += ta[x++].length; pb += tb[y++].length; } else if (y === m || (x < n && lcs[(x + 1) * w + y] >= lcs[x * w + y + 1])) {
+        mark(out.a, pa, (pa += ta[x++].length));
+      } else mark(out.b, pb, (pb += tb[y++].length));
+    }
+    return out;
+  }
+
+  /**
+   * Pairs of a hunk's lines to compare with inlineChange: in each run of removed lines followed directly by added lines,
+   * the pairs that look alike (inlineChange finds a change in them), in order, the most alike overall: so a run of 6
+   * removed and 7 added lines still pairs its edited lines, and a line deleted for good pairs with nothing. A run with
+   * over PAIR_MAX pairs to compare pairs line i with line i when the counts match, else not at all. `lines` keep git's
+   * first character; returns [removed, added] indexes.
+   */
+  const PAIR_MAX = 2500;
+  function linePairs(lines) {
+    const out = [];
+    for (let i = 0; i < lines.length;) {
+      if (lines[i][0] !== '-') { i++; continue; }
+      let j = i;
+      while (j < lines.length && lines[j][0] === '-') j++;
+      let k = j;
+      while (k < lines.length && lines[k][0] === '+') k++;
+      const n = j - i;
+      const m = k - j;
+      if (n * m > PAIR_MAX) {
+        if (n === m) for (let x = 0; x < n; x++) out.push([i + x, j + x]);
+      } else if (m) {
+        // like[x][y]: how alike removed line x and added line y are (0 = not); best[x][y]: the most likeness pairing
+        // removed x.. with added y.. can reach (a dynamic program over the n x m grid, filled from the end)
+        const like = new Float64Array(n * m);
+        for (let x = 0; x < n; x++) {
+          for (let y = 0; y < m; y++) {
+            const a = lines[i + x].slice(1);
+            const b = lines[j + y].slice(1);
+            const c = a.length + b.length < 4000 && inlineChange(a, b);
+            if (c) like[x * m + y] = (c.pre + c.suf) / Math.max(a.length, b.length);
+          }
+        }
+        const w = m + 1;
+        const best = new Float64Array((n + 1) * w);
+        for (let x = n - 1; x >= 0; x--) {
+          for (let y = m - 1; y >= 0; y--) {
+            const l = like[x * m + y];
+            best[x * w + y] = Math.max(best[(x + 1) * w + y], best[x * w + y + 1], l ? l + best[(x + 1) * w + y + 1] : 0);
+          }
+        }
+        for (let x = 0, y = 0; x < n && y < m;) {
+          const l = like[x * m + y];
+          if (l && best[x * w + y] === l + best[(x + 1) * w + y + 1]) out.push([i + x++, j + y++]);
+          else if (best[x * w + y] === best[(x + 1) * w + y]) x++;
+          else y++;
+        }
+      }
+      i = k;
+    }
+    return out;
+  }
+
   const helpers = {
     contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
     jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid,
-    monthLabels,
+    monthLabels, inlineChange, inlineMarks, linePairs,
   };
   if (typeof module === 'object' && module.exports) module.exports = helpers;
   else Object.assign(globalThis, helpers);
