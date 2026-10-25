@@ -131,6 +131,8 @@ Things that differ on a Mac:
 - Copy and paste are `⌘C` / `⌘V` or right-click. Option acts as Meta, so Claude's Option shortcuts work.
 - "No project" chats run in `~/Claude Chats` (or the folder set in Settings > Chats), with `~` added.
 - Sessions use your login shell's PATH, so `claude` and `node` are found even when the app is opened from Finder.
+- Session titles follow `/resume` and `/clear`, including when a launcher runs Claude as a child process. If the live
+  record or process lookup is unavailable, session matching falls back to transcript timing. This needs testing on a Mac.
 - File links open at the right line if VS Code's `code` command is installed ("Shell Command: Install 'code' command
   in PATH"), otherwise VS Code opens the file without the line. Binary files open in their default app (`open`).
 - The footer's plan limits read Claude Code's token from the Keychain. macOS may ask once for access. When no session

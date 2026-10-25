@@ -155,9 +155,11 @@ site/            the product page (static, open index.html or serve the folder; 
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
-  - Live session (`liveSessions`): claude is spawned directly, so the pty's pid is Claude's and is looked up in
-    `~/.claude/sessions` without the console scan (an npm `claude` script execs node, same pid). If it isn't found the tab
-    falls back to `matchSessions`, so `/resume` inside a tab isn't followed there. Untested on a Mac.
+  - Live session (`liveSessions`): first looks up the pty pid in `~/.claude/sessions`. If a launcher keeps Claude in a
+    child process, a bounded `/bin/ps` scan finds the pty's descendants (`descendantPids`); the oldest interactive record
+    wins, with the same freshness, ownership and `LIVE_TRIES` guards as Windows. At most one scan per poll, none after
+    the pid is found; `/resume` and `/clear` then follow that record. A failed scan or missing record falls back to
+    `matchSessions`. Untested on a Mac: test direct and wrapper launches, two tabs in one project, `/resume` and `/clear`.
   - Markdown tabs (right sidebar): no Mac branch. `fs.watch` on the file's folder; macOS may report no file name, then
     every open file in that folder is re-read. "Show in Finder" via `FILES_APP`, Open in VS Code via `openFileAt`.
     The editor: Cmd+S saves now (`mod(e)`), Cmd+C/V/Z come from the Edit menu roles.

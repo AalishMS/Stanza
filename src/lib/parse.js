@@ -223,7 +223,7 @@ function transcriptCwd(text) {
 
 /**
  * Which ~/.claude/sessions/<pid>.json record is a tab's own Claude. `records`: the parsed files; `pids`: the tab's
- * processes (Windows: its console's, macOS: the pty pid); `taken`: pids other tabs already own. A Claude started from
+ * processes (Windows: its console's, macOS: the pty and its descendants); `taken`: pids other tabs already own. A Claude started from
  * the tab's own tools (a nested `claude`) is also on that console but started later, so the oldest interactive one wins.
  * Returns its pid, or null (Claude hasn't written its record yet, or a version without them).
  */
@@ -233,6 +233,22 @@ function liveRecord(records, pids, taken) {
     && (r.kind == null || r.kind === 'interactive'));
   if (!hits.length) return null;
   return hits.reduce((a, b) => ((b.startedAt || 0) < (a.startedAt || 0) ? b : a)).pid;
+}
+
+/** The pty pid and its descendants from parsePs; never cross into another tab's process tree. */
+function descendantPids(procs, root) {
+  const byPid = new Map(procs.map((p) => [p.ProcessId, p]));
+  const children = new Map();
+  for (const p of procs) {
+    const parent = parentPid(byPid, p);
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(p.ProcessId);
+  }
+  const found = new Set([root]);
+  for (const pid of found) {
+    for (const child of children.get(pid) || []) found.add(child);
+  }
+  return [...found];
 }
 
 /** Effort for a model from settings: modelSettings by id ("Opus 5.5" -> claude-opus-5-5), else by family, else global. */
@@ -482,7 +498,7 @@ function summarizeStats(raw, today) {
 module.exports = {
   parseGitStatus,
   parentPid, parseNetstat, parseMsysPs, etimeSeconds, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, defaultEffort, modelFamily, withLongContext, parseModelEffort,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, descendantPids, defaultEffort, modelFamily, withLongContext, parseModelEffort,
   agentDone, lastModel, agentPrompt, parseAgentFile,
   parseMcpList,
   remapSplits,

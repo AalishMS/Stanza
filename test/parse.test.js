@@ -250,6 +250,39 @@ test('liveRecord: the oldest interactive Claude on the tab\'s console, not anoth
   assert.equal(p.liveRecord(records, [9536], new Set()), 9536);
 });
 
+test('macOS live sessions: follow launcher descendants without taking another tab or a nested Claude', () => {
+  // ps -axww -o pid=,ppid=,etime=,args= (launcher stays alive; rows need not be in tree order)
+  const out = [
+    '  103 102 00:05 /Users/me/.local/bin/claude', // nested Claude
+    '  102 101 00:30 node /Users/me/bin/claude.js',
+    '  201 1   00:40 /bin/sh /Users/me/bin/claude', // another tab
+    '  202 201 00:35 /Users/me/.local/bin/claude',
+    '  101 1   00:40 /bin/sh /Users/me/bin/claude', // this tab's pty
+    '  104 102 00:10 node sdk.js',
+    '  105 101 01:00 old-process', // predates its apparent parent: reused pid
+  ].join('\n');
+  const procs = p.parsePs(out, new Map(), 100000);
+  const mine = p.descendantPids(procs, 101);
+  assert.deepEqual(new Set(mine), new Set([101, 102, 103, 104]));
+  const records = [
+    { pid: 202, startedAt: 1, kind: 'interactive' },
+    { pid: 104, startedAt: 2, kind: 'sdk' },
+    { pid: 103, startedAt: 30, kind: 'interactive' },
+    { pid: 102, startedAt: 10, kind: 'interactive' },
+  ];
+  assert.equal(p.liveRecord(records, mine, new Set()), 102);
+  assert.equal(p.liveRecord(records, mine, new Set([102, 103])), null);
+  assert.deepEqual(p.descendantPids(p.parsePs('unavailable', new Map(), 100000), 101), [101]);
+  // Direct native / exec launches still work even if ps fails or omits the root.
+  assert.equal(p.liveRecord(records, p.descendantPids([], 102), new Set()), 102);
+  // Corrupt / cyclic ancestry terminates, including a self-parent.
+  assert.deepEqual(p.descendantPids([
+    { ProcessId: 101, ParentProcessId: 102, T: 0 },
+    { ProcessId: 102, ParentProcessId: 101, T: 0 },
+    { ProcessId: 103, ParentProcessId: 103, T: 0 },
+  ], 101), [101, 102]);
+});
+
 test('defaultEffort: by model id, then by unique family, then global', () => {
   const settings = {
     effortLevel: 'medium',

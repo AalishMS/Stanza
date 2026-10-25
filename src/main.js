@@ -8,7 +8,7 @@ const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, descendantPids, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
   parseAgentFile, parseMcpList, remapSplits, edgeHold, summarizeStats,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
@@ -1003,7 +1003,7 @@ function readSettingsSync() {
 // It changes on /resume and /clear, and /resume keeps writing to the old session's transcript, so no new file shows that
 // switch (undocumented, seen on v2.1.304; without it the renderer falls back to guessing, matchSessions in lib/ui.js).
 const LIVE_DIR = path.join(os.homedir(), '.claude', 'sessions');
-const LIVE_TRIES = 15; // a tab whose record never shows stops costing console scans after this many
+const LIVE_TRIES = 15; // a tab whose record never shows stops costing process scans after this many
 
 async function readLiveRecords() {
   let names;
@@ -1025,11 +1025,12 @@ function consolePids(s) {
 
 // tab id -> the session its Claude is on now. Its Claude's pid is found once (it stays the same across /resume and
 // /clear), looked for only while a record not older than the tab and owned by no other tab exists; then each call reads
-// one small file. macOS spawns claude directly, so the pty's pid is Claude's.
+// one small file. On macOS a launcher may keep Claude in a child process instead of replacing itself.
 async function liveSessions(ids) {
   const out = {};
   const taken = new Set([...sessions.values()].map((s) => s.claudePid).filter(Boolean));
   let records = null;
+  let macProcs = null; // at most one ps per poll, only for tabs whose direct pty lookup missed
   for (const id of Array.isArray(ids) ? ids : []) {
     const s = sessions.get(id);
     if (!s || s.kind !== 'claude' || s.ending) continue;
@@ -1038,7 +1039,19 @@ async function liveSessions(ids) {
       const fresh = records.filter((r) => !taken.has(r.pid) && (r.startedAt || 0) >= s.startedAt - 5000);
       if (fresh.length) {
         s.liveTries = (s.liveTries || 0) + 1;
-        const pid = liveRecord(fresh, IS_MAC ? [s.pty.pid] : await consolePids(s), taken);
+        let pid;
+        if (IS_MAC) {
+          pid = liveRecord(fresh, [s.pty.pid], taken);
+          if (!pid) {
+            if (!macProcs) {
+              const out = await run('/bin/ps', ['-axww', '-o', 'pid=,ppid=,etime=,args='], { timeout: 5000 });
+              macProcs = parsePs(out || '', new Map(), Date.now()); // failure leaves the heuristic fallback in place
+            }
+            pid = liveRecord(fresh, descendantPids(macProcs, s.pty.pid), taken);
+          }
+        } else {
+          pid = liveRecord(fresh, await consolePids(s), taken);
+        }
         if (pid) { s.claudePid = pid; taken.add(pid); }
       }
     }
