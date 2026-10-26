@@ -74,6 +74,44 @@ split panes, git status and a list of the dev servers your sessions started.
   </picture>
 </p>
 
+## Remote Ubuntu projects
+
+Choose **Add project**, then select **Add remote…** in the device list. Enter an SSH alias or
+`user@hostname` (for example `aalish@g5-server`), connect, and choose a folder on the server.
+Remote projects show their device name and connection status in the sidebar. The optional
+project name changes only Stanza's label. **Go** (or Enter in the path field) opens the typed
+remote folder. **New folder** in the folder browser creates a child folder and opens it.
+
+The desktop needs OpenSSH and an existing working key/agent-based SSH connection. Tailscale
+hostnames work through normal SSH. On Ubuntu, install Node.js 20+, tmux, Git and Claude Code;
+the standard `flock` command from util-linux is also required for conversation reservations.
+Sign into Claude there with `claude auth login`. New host keys and locked SSH keys must first
+be handled by running `ssh user@host` in your normal terminal. Stanza uses your existing SSH
+config and host-key verification and does not store passwords or copy Claude credentials.
+Connecting installs a small versioned helper under `~/.local/share/stanza/remote/`; it uses
+stdin/stdout over SSH and does not open a network service or require sudo.
+
+The first release supports remote Claude and shell sessions, mixed local/remote splits,
+session history/resume/fork, Git status and Changes. **Closing a remote tab, quitting Stanza,
+or losing the connection keeps its remote process running in tmux.** Reopen its sidebar row
+to attach again. Use the session's **End remote session…** menu action to stop it. A server
+reboot ends live processes; transcript-backed conversations can then be resumed.
+
+Remote file viewers, uploads/image paste, VS Code integration, MCP/subagent details and the
+running-servers panel are not supported yet. The project menu can copy the remote path.
+Start tools in the remote shell; browser access uses your own network/Tailscale or manual SSH
+forwarding. A server's `localhost` address is different from your desktop's. Usage/activity
+totals still describe the local Claude account and local activity.
+
+**Settings > Connections** lists saved devices and lets you **Add connection**, **Rename** a device,
+**Test connection**, or **Add project** on it. Its On/Off switch is saved across restarts. Turning it off
+detaches local tabs and pauses remote polling/reconnection; remote sessions keep running in tmux.
+Turn it back on to reconnect. Testing checks SSH access and the remote helper's requirements and identity;
+it reports when Claude Code is missing (shell sessions still work). You can also reconnect from the
+project menu. To change an SSH target/account, add a new device instead.
+After ending Stanza's remote sessions, its helper directory can be deleted from the server
+if no Stanza client uses it.
+
 ## Install
 
 You need [Node.js](https://nodejs.org) 20+, git, and the `claude` CLI installed and logged in. Then paste one line.
@@ -115,6 +153,16 @@ npm run shortcut    # Desktop and Start menu shortcuts
 
 ### macOS
 
+Remote Ubuntu projects use macOS's `/usr/bin/ssh` and the same Cmd shortcuts as local projects.
+Test from a Finder-launched build with your SSH agent/Keychain available: add and rename a device
+in Settings > Connections, test it, toggle it off/on, and restart with it off
+to check persistence and that it makes no connection attempts. Check keyboard focus and all four themes.
+Add a remote folder, create a child folder, toggle the device menu with repeated clicks and use its arrow keys and Escape, open Shell/Claude, use
+Option keys and mouse input, resize a mixed split, sleep/reconnect,
+close/reopen a remote tab, explicitly End it, and confirm local Git stays responsive while
+the server is offline. Remote support has been exercised on Windows; these Mac checks remain
+untested here. Full steps are in [MAC_CHECKLIST.md](MAC_CHECKLIST.md).
+
 macOS works but isn't tested by the author. Install git with `xcode-select --install`, then use the one-line install
 above, or by hand in the clone:
 
@@ -131,6 +179,8 @@ Things that differ on a Mac:
 - Copy and paste are `⌘C` / `⌘V` or right-click. Option acts as Meta, so Claude's Option shortcuts work.
 - "No project" chats run in `~/Claude Chats` (or the folder set in Settings > Chats), with `~` added.
 - Sessions use your login shell's PATH, so `claude` and `node` are found even when the app is opened from Finder.
+- Session titles follow `/resume` and `/clear`, including when a launcher runs Claude as a child process. If the live
+  record or process lookup is unavailable, session matching falls back to transcript timing. This needs testing on a Mac.
 - File links open at the right line if VS Code's `code` command is installed ("Shell Command: Install 'code' command
   in PATH"), otherwise VS Code opens the file without the line. Binary files open in their default app (`open`).
 - The footer's plan limits read Claude Code's token from the Keychain. macOS may ask once for access. When no session

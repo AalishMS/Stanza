@@ -1,0 +1,2 @@
+Claude Bench: a desktop wrapper around the real claude CLI. Every tab is a genuine Claude Code session, with a project sidebar, tabs that survive a restart, split view, git status, context/MCP/subagent panels and notifications when a session needs you.
+Free, no telemetry. Windows first, macOS best effort.

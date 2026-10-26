@@ -8,11 +8,14 @@ const { execFile, spawn } = require('child_process');
 const pty = require('@lydell/node-pty');
 const {
   parseGitStatus, parentPid, parseNetstat, parseMsysPs, parseLsof, parsePs, macDevName, withoutFlagValues,
-  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
+  oneLine, usageTokens, parseTail, firstPrompt, transcriptCwd, liveRecord, descendantPids, defaultEffort, withLongContext, parseModelEffort, agentDone, lastModel, agentPrompt,
   parseAgentFile, parseMcpList, remapSplits, edgeHold, summarizeStats,
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
 const { parseDiff, parseNumstat, statusPaths, zList, lineCount, addedFile } = require('./lib/diff');
+const { isRemote, remoteKey, remoteTarget, UUID, deviceName, verifyRemoteIdentity } = require('./lib/remote');
+const { Remote } = require('./remote');
+const crypto = require('crypto');
 
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
 const IS_MAC = process.platform === 'darwin';
@@ -77,6 +80,8 @@ if (IS_MAC && !process.env.LANG) process.env.LANG = 'en_US.UTF-8'; // Finder lau
 
 const defaults = {
   projects: [], // [{ path, name }]
+  remotes: [],
+  remoteClient: null,
   ui: { sidebar: true, servers: true, rsideMigrated: true, sidebarW: 232, rsideW: 300, rsideDocPct: 40, fontSize: 14, zoom: 1, theme: 'dark', claude: false, accent: 'blue', expanded: [], collapsed: [], keys: {} }, // theme: dark | light | system; claude: Claude desktop's palette over that theme; accent: ACCENTS; expanded: project paths showing sessions; collapsed: right-sidebar sections folded shut; keys: shortcut overrides (action id -> combos); rsideDocPct: right sidebar width (% of the window) while a markdown tab shows
   docs: {}, // markdown tabs in the right sidebar, per project: { [project path]: { files: [absolute path], active: index | -1 } }
   bounds: null,
@@ -137,7 +142,16 @@ function restorableTabs() {
   (Array.isArray(state.tabs) ? state.tabs : []).forEach((t, i) => {
     try {
       const proj = state.projects.find((p) => samePath(p.path, t.project));
-      if (!proj || !isDir(proj.path)) return;
+      if (!proj) return;
+      if (proj.remoteId) {
+        if (!state.remotes.some((d) => d.id === proj.remoteId) || !['shell', 'claude'].includes(t.kind)) return;
+        if (!UUID.test(t.runtimeId) && !(t.kind === 'claude' && UUID.test(t.sessionId))) return;
+        list.push({ project: proj.path, kind: t.kind, sessionId: UUID.test(t.sessionId) ? t.sessionId : null, runtimeId: t.runtimeId });
+        at.set(i, list.length - 1);
+        if (i === state.activeTab) active = list.length - 1;
+        return;
+      }
+      if (!isDir(proj.path)) return;
       if (t.kind === 'claude') {
         if (!UUID_RE.test(t.sessionId) || !fs.existsSync(path.join(projectDir(proj.path), `${t.sessionId}.jsonl`))) return;
         list.push({ project: proj.path, kind: 'claude', sessionId: t.sessionId });
@@ -154,8 +168,8 @@ function restorableTabs() {
 function saveTabs(payload) {
   const list = Array.isArray(payload?.tabs) ? payload.tabs : [];
   state.tabs = list.slice(0, 50)
-    .filter((t) => typeof t?.project === 'string' && (t.kind === 'shell' || (t.kind === 'claude' && UUID_RE.test(t.sessionId))))
-    .map((t) => ({ project: t.project, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null }));
+    .filter((t) => typeof t?.project === 'string' && (t.kind === 'shell' || (t.kind === 'claude' && (UUID_RE.test(t.sessionId) || (isRemote(t.project) && UUID.test(t.runtimeId))))))
+    .map((t) => ({ project: t.project, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null, ...(isRemote(t.project) ? { runtimeId: t.runtimeId } : {}) }));
   state.activeTab = Number.isInteger(payload?.active) ? payload.active : -1;
   const ratio = (v) => (typeof v === 'number' && v > 0.05 && v < 0.95 ? v : 0.5);
   const used = new Set();
@@ -182,6 +196,7 @@ function restorableDocs() {
     try {
       const p = state.projects.find((x) => samePath(x.path, proj));
       if (!p || !Array.isArray(d?.files)) continue;
+      if (p.remoteId) { if (d.diff) out[p.path] = { files: [], active: DIFF_TAB, diff: true }; continue; }
       const files = d.files.filter((f) => typeof f === 'string' && MD_RE.test(f) && isFile(f));
       const diff = d.diff === true; // the Changes tab is open
       if (!files.length && !diff) continue;
@@ -219,7 +234,71 @@ const isDir = (p) => {
     return false;
   }
 };
-const samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+const samePath = (a, b) => isRemote(a) || isRemote(b) ? a === b : path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+
+let remote;
+const remoteStatuses = {};
+function remoteManager() {
+  if (!remote) {
+    if (!UUID.test(state.remoteClient)) { state.remoteClient = crypto.randomUUID(); saveState(); }
+    remote = new Remote(state.remoteClient, (id, status) => { remoteStatuses[id] = status; send('remote:status', id, status); });
+  }
+  return remote;
+}
+function remoteProject(key) {
+  const p = state.projects.find((p) => p.path === key) || [...sessions.values()].find((s) => s.cwd === key)?.project;
+  const device = p && state.remotes.find((d) => d.id === p.remoteId);
+  if (!p?.remoteId || !device || remoteKey(device.id, p.remotePath) !== key) throw Error('Remote project is not available');
+  return { project: p, device };
+}
+async function remoteCall(key, op, params = {}) {
+  const { project, device } = remoteProject(key);
+  return deviceCall(device, op, { ...params, cwd: project.remotePath });
+}
+async function deviceCall(device, op, params = {}) {
+  const info = await checkRemoteDevice(device);
+  if (op === 'prepare' && params.kind === 'claude' && !info.claude) throw Error('Claude Code is missing on the server. Open a remote Shell to install it.');
+  return remoteManager().call(device, op, params);
+}
+async function checkRemoteDevice(device, force = false) {
+  try {
+    const info = await remoteManager().check(device, force);
+    verifyRemoteIdentity(device, info);
+    return info;
+  } catch (e) {
+    // Validation failures (missing tools or a different identity) are offline too.
+    // Keep transport failures' normal retry delay so background polls cannot hammer SSH.
+    if (remoteStatuses[device.id]?.status === 'connected') remoteManager().disconnect(device, e.message);
+    throw e;
+  }
+}
+
+const creatingRemote = new Set();
+async function createRemoteSession(opts) {
+  if (!UUID.test(opts.id) || sessions.has(opts.id) || creatingRemote.has(opts.id)) return { ok: false, error: 'Session is already starting or attached' };
+  creatingRemote.add(opts.id);
+  try {
+    const { project, device } = remoteProject(opts.cwd);
+    const handle = UUID.test(opts.runtimeId) ? opts.runtimeId : crypto.randomUUID();
+    const runtime = await remoteCall(opts.cwd, 'prepare', { ...opts, handle });
+    if (device.enabled === false) throw Error('Connection is off. Turn it on in Settings > Connections.');
+    if (sessions.has(opts.id)) return { ok: false, error: 'Session already attached' };
+    if ([...sessions.values()].some((s) => s.remoteId && s.runtimeId === runtime.handle)) throw Error('That remote session is already attached in another tab');
+    const launch = remoteManager().attach(device, runtime.handle);
+    const p = pty.spawn(launch.file, launch.argv, { name: 'xterm-256color', cols: Math.max(opts.cols || 80, 2), rows: Math.max(opts.rows || 24, 2), cwd: os.homedir(), env: { ...process.env, TERM: 'xterm-256color' } });
+    const s = { pty: p, cwd: opts.cwd, project, kind: opts.kind, remoteId: device.id, runtimeId: runtime.handle, buf: '', timer: null, startedAt: runtime.startedAt };
+    s.closed = new Promise((resolve) => { s.resolveClosed = resolve; });
+    sessions.set(opts.id, s);
+    p.onData((d) => { s.buf += d; if (!s.timer) s.timer = setTimeout(() => flushSession(opts.id), 6); });
+    p.onExit(({ exitCode }) => {
+      clearTimeout(s.timer); flushSession(opts.id); sessions.delete(opts.id);
+      s.resolveClosed();
+      send('pty:exit', opts.id, exitCode);
+    });
+    return { ok: true, runtimeId: runtime.handle, sessionId: runtime.sessionId || runtime.resumeId || null, skipPerms: !!runtime.skipPerms, startedAt: runtime.startedAt };
+  } catch (e) { return { ok: false, error: e.message }; }
+  finally { creatingRemote.delete(opts.id); }
+}
 
 /**
  * "No project" chats run in their own folder, not in home: Claude Code never saves trust for the home folder, so every
@@ -366,7 +445,7 @@ function endSession(s) {
   if (s.ending) return;
   s.ending = true;
   const agent = s.pty._agent;
-  if (IS_MAC || s.kind !== 'claude' || typeof agent?._getConsoleProcessList !== 'function') {
+  if (s.remoteId || IS_MAC || s.kind !== 'claude' || typeof agent?._getConsoleProcessList !== 'function') {
     try { s.pty.kill(); } catch { /* already gone */ }
     return;
   }
@@ -465,6 +544,7 @@ function run(file, args, opts = {}) {
 }
 
 async function gitStatus(cwd) {
+  if (isRemote(cwd)) return remoteCall(cwd, 'status');
   const out = await run('git', ['-C', cwd, 'status', '--porcelain=v2', '--branch'], {
     env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
   });
@@ -549,6 +629,7 @@ async function diffCached(kind, cwd, compute) {
 
 /** For the top bar's button: { ok, files, added, removed } of the uncommitted changes (new files' lines count as added). */
 function diffStat(cwd) {
+  if (isRemote(cwd)) return remoteCall(cwd, 'diff').then((v) => v.ok ? { ok: true, files: v.files.length + v.more, added: v.added, removed: v.removed } : v);
   return diffCached('stat', cwd, async (root, base) => {
     const [num, others] = await Promise.all([
       gitIn(root, ['diff', base, '--numstat', '-z', '-M', '--no-color', '--no-ext-diff']),
@@ -572,6 +653,7 @@ function diffStat(cwd) {
  * files left out }, or { same: true } when it is still the one the renderer has (`have` = its id).
  */
 async function gitDiff(cwd, have) {
+  if (isRemote(cwd)) return remoteCall(cwd, 'diff', { have });
   const value = await diffCached('diff', cwd, async (root, base, hash) => {
     const [patch, others] = await Promise.all([
       gitIn(root, ['-c', 'core.quotepath=false', 'diff', base, '--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-prefix=b/', '-M'],
@@ -687,11 +769,12 @@ async function scanPorts() {
   const sessionByPid = new Map();
   // ConPTY reports pid 0 until it has connected, so read it now rather than at spawn time.
   for (const [id, s] of sessions) {
+    if (s.remoteId) continue;
     if (s.pty.pid) sessionByPid.set(s.pty.pid, { id, cwd: s.cwd, kind: s.kind });
   }
 
   // Not the Chats entry: it may be set to the home folder, which nearly every command line would match.
-  const projectsByLength = state.projects.filter((p) => !p.chat).sort((a, b) => b.path.length - a.path.length);
+  const projectsByLength = state.projects.filter((p) => !p.chat && !p.remoteId).sort((a, b) => b.path.length - a.path.length);
 
   // Walks up the parent chain: { s } = the session it was started from, else { broken } = the process whose parent is
   // gone. Git Bash (MSYS) emulates fork/exec with new Windows processes and the one in between can exit, so a server
@@ -842,6 +925,17 @@ async function readSession(file, st) {
 }
 
 async function listSessions(cwd) {
+  if (isRemote(cwd)) {
+    const [history, runtimes] = await Promise.all([remoteCall(cwd, 'history'), remoteCall(cwd, 'live')]);
+    const { project } = remoteProject(cwd);
+    for (const r of runtimes.filter((r) => r.cwd === project.remotePath && r.alive)) {
+      const found = r.sessionId && history.find((s) => s.id === r.sessionId);
+      if (found) Object.assign(found, { runtimeId: r.handle, transcriptId: found.id, kind: r.kind });
+      else history.unshift({ id: r.sessionId || r.handle, transcriptId: r.sessionId, runtimeId: r.handle, kind: r.kind,
+        title: r.kind === 'shell' ? 'Shell (running remotely)' : 'New remote session', last: r.startedAt, birth: r.startedAt, mtime: r.startedAt });
+    }
+    return history;
+  }
   const dir = projectDir(cwd);
   let names;
   try {
@@ -1003,7 +1097,7 @@ function readSettingsSync() {
 // It changes on /resume and /clear, and /resume keeps writing to the old session's transcript, so no new file shows that
 // switch (undocumented, seen on v2.1.304; without it the renderer falls back to guessing, matchSessions in lib/ui.js).
 const LIVE_DIR = path.join(os.homedir(), '.claude', 'sessions');
-const LIVE_TRIES = 15; // a tab whose record never shows stops costing console scans after this many
+const LIVE_TRIES = 15; // a tab whose record never shows stops costing process scans after this many
 
 async function readLiveRecords() {
   let names;
@@ -1025,20 +1119,33 @@ function consolePids(s) {
 
 // tab id -> the session its Claude is on now. Its Claude's pid is found once (it stays the same across /resume and
 // /clear), looked for only while a record not older than the tab and owned by no other tab exists; then each call reads
-// one small file. macOS spawns claude directly, so the pty's pid is Claude's.
+// one small file. On macOS a launcher may keep Claude in a child process instead of replacing itself.
 async function liveSessions(ids) {
   const out = {};
   const taken = new Set([...sessions.values()].map((s) => s.claudePid).filter(Boolean));
   let records = null;
+  let macProcs = null; // at most one ps per poll, only for tabs whose direct pty lookup missed
   for (const id of Array.isArray(ids) ? ids : []) {
     const s = sessions.get(id);
-    if (!s || s.kind !== 'claude' || s.ending) continue;
+    if (!s || s.remoteId || s.kind !== 'claude' || s.ending) continue;
     if (!s.claudePid && (s.liveTries || 0) < LIVE_TRIES) {
       if (!records) records = await readLiveRecords();
       const fresh = records.filter((r) => !taken.has(r.pid) && (r.startedAt || 0) >= s.startedAt - 5000);
       if (fresh.length) {
         s.liveTries = (s.liveTries || 0) + 1;
-        const pid = liveRecord(fresh, IS_MAC ? [s.pty.pid] : await consolePids(s), taken);
+        let pid;
+        if (IS_MAC) {
+          pid = liveRecord(fresh, [s.pty.pid], taken);
+          if (!pid) {
+            if (!macProcs) {
+              const out = await run('/bin/ps', ['-axww', '-o', 'pid=,ppid=,etime=,args='], { timeout: 5000 });
+              macProcs = parsePs(out || '', new Map(), Date.now()); // failure leaves the heuristic fallback in place
+            }
+            pid = liveRecord(fresh, descendantPids(macProcs, s.pty.pid), taken);
+          }
+        } else {
+          pid = liveRecord(fresh, await consolePids(s), taken);
+        }
         if (pid) { s.claudePid = pid; taken.add(pid); }
       }
     }
@@ -1052,6 +1159,7 @@ async function liveSessions(ids) {
 // `tabId`'s settings as its Claude started, not today's file: another tab's /model or /effort changes the file, not this
 // session. A tab with no transcript yet reads the file, where a /model or /effort typed before the first prompt shows.
 async function sessionInfo(cwd, sessionId, tabId) {
+  if (isRemote(cwd)) return { model: null, effort: null, agents: [] };
   const started = sessionId ? sessions.get(tabId)?.settings : null;
   const settings = started || (await readJson(SETTINGS_FILE));
   let model = null;
@@ -1796,6 +1904,7 @@ app.on('before-quit', (e) => {
     return;
   }
   for (const s of sessions.values()) endSession(s);
+  remote?.close();
 });
 
 // ------------------------------------------------------- markdown reader ----
@@ -1928,7 +2037,76 @@ function docChanged(k, name) {
 // ------------------------------------------------------------------ ipc ----
 
 function registerIpc() {
-  ipcMain.handle('state:get', () => ({ projects: state.projects, ui: state.ui, restore: restorableTabs(), docs: restorableDocs(), chat: chatInfo(), user: userName() }));
+  ipcMain.handle('state:get', () => ({ projects: state.projects, remotes: state.remotes, remoteStatuses, ui: state.ui, restore: restorableTabs(), docs: restorableDocs(), chat: chatInfo(), user: userName() }));
+  ipcMain.handle('remote:add', async (_e, value) => {
+    try {
+      const endpoint = remoteTarget(value?.target, value?.port);
+      const device = { ...endpoint, id: crypto.randomUUID(), name: deviceName(value.name || value.target), enabled: true };
+      const info = await checkRemoteDevice(device);
+      Object.assign(device, { home: info.home, user: info.user, hostname: info.hostname });
+      state.remotes.push(device); saveState();
+      return { ok: true, remotes: state.remotes, device, info };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:update', async (_e, id, value) => {
+    try {
+      const d = state.remotes.find((d) => d.id === id);
+      if (!d) throw Error('Remote device not found');
+      if (value?.name !== undefined) d.name = deviceName(value.name);
+      if (typeof value?.enabled === 'boolean') {
+        d.enabled = value.enabled;
+        saveState(); // persist off before stopping SSH so polling cannot reconnect it
+        if (!d.enabled) {
+          remoteManager().disconnect(d);
+          for (const s of sessions.values()) if (s.remoteId === id) endSession(s);
+        } else {
+          await checkRemoteDevice(d, true);
+        }
+      }
+      saveState();
+      return { ok: true, remotes: state.remotes, remoteStatuses };
+    } catch (e) { return { ok: false, error: e.message, remotes: state.remotes, remoteStatuses }; }
+  });
+  ipcMain.handle('remote:dirs', async (_e, id, folder) => {
+    try {
+      const device = state.remotes.find((d) => d.id === id);
+      if (!device) throw Error('Remote device not found');
+      return { ok: true, ...await deviceCall(device, 'dirs', { path: folder }) };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:project', async (_e, id, folder, name) => {
+    try {
+      const device = state.remotes.find((d) => d.id === id);
+      if (!device) throw Error('Remote device not found');
+      const value = await deviceCall(device, 'dirs', { path: folder });
+      const key = remoteKey(id, value.path);
+      if (!state.projects.some((p) => p.path === key)) state.projects.push({ path: key, remoteId: id, remotePath: value.path, name: String(name || path.posix.basename(value.path) || value.path).slice(0, 120) });
+      saveState(); return { ok: true, projects: state.projects, added: [key] };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:mkdir', async (_e, id, folder, name) => {
+    try {
+      const device = state.remotes.find((d) => d.id === id);
+      if (!device) throw Error('Remote device not found');
+      return { ok: true, ...await deviceCall(device, 'mkdir', { path: folder, name }) };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:reconnect', async (_e, id) => {
+    try {
+      const d = state.remotes.find((d) => d.id === id);
+      if (!d) throw Error('Remote device not found');
+      const info = await checkRemoteDevice(d, true);
+      return { ok: true, info };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:runtime', async (_e, key, handle, action) => {
+    try {
+      if (!UUID.test(handle)) throw Error('Invalid runtime');
+      if (action === 'end') return { ok: true, ...await remoteCall(key, 'terminate', { handle }) };
+      const rows = await remoteCall(key, 'live');
+      return { ok: true, runtime: rows.find((r) => r.handle === handle) || null };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
   ipcMain.on('tabs:set', (_e, payload) => saveTabs(payload));
   ipcMain.on('docs:set', (_e, payload) => saveDocs(payload));
 
@@ -1989,7 +2167,15 @@ function registerIpc() {
     saveState();
   });
 
-  ipcMain.handle('pty:create', (_e, opts) => (IS_MAC ? shellEnvReady.then(() => createSession(opts)) : createSession(opts)));
+  ipcMain.handle('pty:create', (_e, opts) => isRemote(opts?.cwd) ? createRemoteSession(opts) : (IS_MAC ? shellEnvReady.then(() => createSession(opts)) : createSession(opts)));
+  ipcMain.handle('pty:detach', async (_e, id) => {
+    const s = sessions.get(id);
+    if (!s?.remoteId) return { ok: true };
+    endSession(s);
+    let timer;
+    const ok = await Promise.race([s.closed.then(() => true), new Promise((resolve) => { timer = setTimeout(() => resolve(false), 5000); })]);
+    clearTimeout(timer); return { ok, error: ok ? null : 'SSH attachment did not close. Try again.' };
+  });
   const live = (id) => { const s = sessions.get(id); return s && !s.ending ? s : null; }; // not one endSession is closing
   ipcMain.on('pty:write', (_e, id, data) => live(id)?.pty.write(data));
   ipcMain.on('pty:resize', (_e, id, cols, rows) => {
@@ -2001,22 +2187,31 @@ function registerIpc() {
   });
 
   ipcMain.handle('git:status', async (_e, paths) => {
-    const entries = await Promise.all((paths || []).map(async (p) => [p, await gitStatus(p)]));
+    const entries = await Promise.all((paths || []).map(async (p) => [p, await gitStatus(p).catch(() => undefined)]));
     return Object.fromEntries(entries);
   });
   ipcMain.handle('git:diffstat', (_e, p) => (typeof p === 'string' ? diffStat(p) : { ok: false }));
   ipcMain.handle('git:diff', (_e, p, have) => (typeof p === 'string' ? gitDiff(p, typeof have === 'string' ? have : null) : { ok: false }));
 
   ipcMain.handle('sessions:list', async (_e, paths) => {
-    const entries = await Promise.all((paths || []).map(async (p) => [p, await listSessions(p)]));
+    const entries = await Promise.all((paths || []).map(async (p) => [p, await listSessions(p).catch(() => undefined)]));
     return Object.fromEntries(entries);
   });
-  ipcMain.handle('sessions:live', (_e, ids) => liveSessions(ids));
+  ipcMain.handle('sessions:live', async (_e, ids) => {
+    const local = await liveSessions(ids);
+    const groups = new Map();
+    for (const id of ids || []) { const s = sessions.get(id); if (s?.remoteId) { if (!groups.has(s.cwd)) groups.set(s.cwd, []); groups.get(s.cwd).push([id, s.runtimeId]); } }
+    await Promise.all([...groups].map(async ([key, entries]) => {
+      const rows = await remoteCall(key, 'live').catch(() => []);
+      for (const [id, handle] of entries) { const r = rows.find((r) => r.handle === handle); if (r?.sessionId) local[id] = r.sessionId; }
+    }));
+    return local;
+  });
   ipcMain.handle('session:info', (_e, cwd, sessionId, tabId) => sessionInfo(cwd, sessionId, tabId));
-  ipcMain.handle('mcp:list', (_e, cwd) => mcpList(cwd));
-  ipcMain.handle('agents:defined', (_e, cwd) => definedAgents(cwd));
-  ipcMain.handle('agents:prompt', (_e, cwd, sessionId, name) => agentPrompts(cwd, sessionId, name));
-  ipcMain.handle('images:list', (_e, cwd, sessionId) => imagesList(cwd, sessionId));
+  ipcMain.handle('mcp:list', (_e, cwd) => isRemote(cwd) ? { ok: false, servers: [] } : mcpList(cwd));
+  ipcMain.handle('agents:defined', (_e, cwd) => isRemote(cwd) ? [] : definedAgents(cwd));
+  ipcMain.handle('agents:prompt', (_e, cwd, sessionId, name) => isRemote(cwd) ? null : agentPrompts(cwd, sessionId, name));
+  ipcMain.handle('images:list', (_e, cwd, sessionId) => isRemote(cwd) ? { items: [] } : imagesList(cwd, sessionId));
   ipcMain.handle('images:thumb', (_e, cwd, sessionId, id) => imageThumb(cwd, sessionId, id));
   ipcMain.handle('images:full', (_e, cwd, sessionId, id) => imageFull(cwd, sessionId, id));
   ipcMain.handle('images:reveal', (_e, cwd, sessionId, id) => revealImage(cwd, sessionId, id));
@@ -2031,10 +2226,11 @@ function registerIpc() {
     if (/^https?:\/\//i.test(url)) return shell.openExternal(url);
   });
   ipcMain.handle('shell:showInFolder', (_e, p) => {
-    if (isDir(p)) return shell.openPath(p);
+    if (!isRemote(p) && isDir(p)) return shell.openPath(p);
   });
 
   ipcMain.handle('shell:openInCode', (_e, p) => {
+    if (isRemote(p)) return { ok: false, error: 'Remote editor integration is not available yet. Copy the remote path instead.' };
     if (!isDir(p)) return { ok: false, error: 'Folder not found' };
     if (IS_MAC) {
       return new Promise((resolve) => {
@@ -2054,7 +2250,7 @@ function registerIpc() {
 
   // File links in the terminal: which of these candidate paths (absolute, or relative to the tab's folder) are files.
   ipcMain.handle('files:resolve', (_e, cwd, list) => {
-    if (typeof cwd !== 'string' || !Array.isArray(list)) return [];
+    if (typeof cwd !== 'string' || isRemote(cwd) || !Array.isArray(list)) return [];
     return list.slice(0, 50).map((f) => {
       if (typeof f !== 'string' || !f || f.length > 1000) return null;
       try {
@@ -2075,7 +2271,7 @@ function registerIpc() {
     if (typeof file === 'string' && MD_RE.test(file) && isFile(file)) shell.showItemInFolder(path.normalize(file));
   });
   ipcMain.on('md:watch', (_e, files) => watchDocs(files));
-  ipcMain.handle('docs:list', (_e, cwd, sessionId) => docsList(cwd, sessionId));
+  ipcMain.handle('docs:list', (_e, cwd, sessionId) => isRemote(cwd) ? { session: [], project: [] } : docsList(cwd, sessionId));
 
   ipcMain.handle('clipboard:read', () => clipboard.readText());
   ipcMain.on('clipboard:write', (_e, text) => clipboard.writeText(String(text)));

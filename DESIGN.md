@@ -124,6 +124,32 @@ Class names are short and composable. These recipes mirror shadcn's components.
 - `.on` = toggled state (bg `--accent`, `--foreground`).
 - **No pill buttons.** Pills were the old design. One exception: the right sidebar's tab pill (see "Tab pill").
 
+### Remote projects
+
+Add project uses the existing dialog recipe, up to 520 px wide, with a themed device menu:
+This computer, saved remotes, Add remote. Its outline trigger shows an icon, label and chevron;
+the menu uses the DropdownMenu recipe with a checkmark on the current device, arrow-key
+navigation and Escape to close the menu before the dialog. Its native popover invoker toggles
+the menu on repeated trigger clicks. Local selection keeps the native folder picker.
+Remote selection shows an optional project name, a path field with Go, a flat scrollable list
+of 32 px folder rows and a primary Add project button. A New folder ghost button in the folder
+browser's toolbar reveals an inline name field with Create/Cancel. Creating opens that new
+child folder. Go (or Enter) browses the typed path. Disabled devices are omitted from the picker;
+Settings > Connections manages their names and on/off state.
+Inputs follow the Input recipe; all
+surfaces use the four existing palettes. The close button stays at the dialog's right edge.
+
+A remote project row uses a server outline icon, the usual truncated project name, then a
+separate 11 px faint device label (up to 72 px) and a 6 px connection dot: success = connected,
+warning = connecting, faint = offline. The tooltip explains the state/error. Its session rows
+retain the normal working/attention dots; the project does not show a second running dot.
+Status-bar paths read `device · /absolute/remote/path`. Remote shell labels are Shell on both
+desktops. Closing a remote tab says it keeps the process running; End is an explicit action.
+
+The remote right sidebar explains which features are available, with no local MCP/agent/server
+data substituted. Changes retains its existing layout but has no local Open in VS Code action.
+File upload and clipboard-image attempts explain that remote upload is not available yet.
+
 ### No tab strip
 There is no horizontal tab strip: the sidebar's session rows are the tabs. Every open tab has a row (a transcript
 row, a "New session" placeholder until the first reply, or a "PowerShell" row). `Ctrl+Tab`, `Alt+1..9` and
@@ -151,7 +177,7 @@ different projects it sits at the top of the list and each row shows its project
 `#settings` covers the terminal area (top bar, sidebars and status bar stay). Centered 840 px column, 32 px padding:
 title 18 px / 600 with a ghost `×`, then a two-column layout (shadcn's settings example): a 168 px sticky section nav
 (32 px rows, 14 px icon, `--muted-foreground`; hover `--sidebar-hover`; the open one `--accent` bg, `--foreground`,
-500) and the open section. Sections: **Appearance** (default), **Chats** and **Shortcuts**; the open one is runtime only. A
+500) and the open section. Sections: **Appearance** (default), **Connections**, **Chats** and **Shortcuts**; the open one is runtime only. A
 section header has a 14 px / 600 title, a 12 px muted line, an optional `Reset all` outline sm button on the right, and
 a 1 px `--border` rule under it.
 
@@ -167,6 +193,14 @@ revealed by a growing `clip-path`, 700 ms). Reduced motion turns all of it off. 
 `--foreground` when selected. **Accent color**: outline-style option buttons (h 32) with a 14 px swatch dot + name;
 selected = `--ring` border. **Terminal text size**: outline icon `−` / `+`, the value in mono, and a ghost
 "Reset to 14" when changed. **Interface zoom** uses the same control (`110 %`, "Reset to 100 %"). All are `role=radio` groups; a re-render puts focus back on the same control (`data-fk`).
+
+Connections: an outline sm **Add connection** action in the section header, a muted explanation, then
+one field per saved SSH device separated by the usual `--border` rules. The header pairs a server icon,
+device name and muted target/port with an On/Off label and a compact accessible switch (32 × 18 px,
+`--input` off, `--primary` on; ordinary focus ring, no animation). A status dot and plain text show
+Connected, Connecting, Offline or Off. Test connection (outline sm), Rename and Add project (ghost sm)
+sit below; results and errors wrap in `.set-note` lines. Off disables testing and project creation.
+Adding and renaming use the existing dialog and input recipes. All four palettes share these tokens.
 
 Chats: one field, **Chat folder**: the path in a bordered box (`.set-path`, 12 px muted, `rounded-md`, wraps anywhere),
 then `Change…` (outline sm, folder icon), `Show in Explorer` (ghost sm) and, when not the default, `Reset to default`
