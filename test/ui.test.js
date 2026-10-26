@@ -6,6 +6,37 @@ const fs = require('fs');
 const path = require('path');
 const ui = require('../src/lib/ui');
 
+test('projectToFront: stable project order for Windows, macOS and remote paths, without mutating the list', () => {
+  const all = [
+    { path: 'C:\\code\\app', name: 'app' },
+    { path: '/Users/test/app', name: 'app' },
+    { path: 'ssh://00000000-0000-4000-8000-000000000001/home/test/app', name: 'app', remoteId: 'device' },
+  ];
+  const before = all.slice();
+  const remote = ui.projectToFront(all, all[2].path);
+  assert.deepEqual(remote, [all[2], all[0], all[1]]);
+  assert.deepEqual(ui.projectToFront(remote, all[1].path), [all[1], all[2], all[0]]);
+  assert.deepEqual(ui.projectToFront(remote, all[0].path), [all[0], all[2], all[1]]);
+  assert.deepEqual(all, before);
+});
+
+test('projectToFront: Chats stays pinned and repeat use does not cause another save', () => {
+  const chat = { path: '/Users/test/Claude Chats', chat: true };
+  const a = { path: '/a' }, b = { path: '/b' };
+  const all = [chat, a, b];
+  const next = ui.projectToFront(all, b.path);
+  assert.deepEqual(next, [chat, b, a]);
+  assert.equal(ui.projectToFront(next, b.path), next);
+  assert.equal(ui.projectToFront(all, chat.path), all);
+  assert.equal(ui.projectToFront([a, b], a.path)[0], a);
+});
+
+test('projectToFront: absent or removed projects are not re-added', () => {
+  const all = [{ path: '/a' }];
+  assert.equal(ui.projectToFront(all, '/removed'), all);
+  assert.deepEqual(ui.projectToFront([], '/removed'), []);
+});
+
 test('renderer.js declares only names lib/ui.js defines', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer.js'), 'utf8');
   const decl = /\/\* global ([^*]+?) -- lib\/ui\.js \*\//.exec(src);

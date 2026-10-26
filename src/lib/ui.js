@@ -49,6 +49,17 @@
 
   // ------------------------------------------------------------ projects ----
 
+  /** Move a used project and its sessions first, below pinned Chats. Missing/removed projects stay removed. */
+  function projectToFront(all, projectPath) {
+    const i = all.findIndex((p) => p.path === projectPath && !p.chat);
+    const top = all.findIndex((p) => !p.chat);
+    if (i < 0 || i === top) return all;
+    const next = all.slice();
+    next.splice(i, 1);
+    next.splice(top, 0, all[i]);
+    return next;
+  }
+
   /**
    * The parent folders that tell project `p` apart from the others in `all` with the same folder name ("clients" for
    * C:\code\clients\app), else ''.
@@ -429,7 +440,7 @@
   }
 
   const helpers = {
-    contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches,
+    contextWindow, normCombo, comboOf, matchShortcut, projectToFront, distinctParent, dialogOpen, lineCells, fileMatches,
     jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid,
     monthLabels, inlineChange, inlineMarks, linePairs,
   };

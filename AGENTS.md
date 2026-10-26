@@ -170,6 +170,10 @@ site/            the product page (static, open index.html or serve the folder; 
     one never sits under the traffic lights. Main's `peekHold` (cursor just outside that edge, or over the top bar's drag
     region with the sidebar out, keeps it out) uses `screen.getCursorScreenPoint` + content bounds, both in points on macOS too.
   - First-run projects (`recentProjects`): no Mac branch (same `~/.claude/projects` layout and `cwd` field).
+  - Project recency: shared renderer logic, no Mac branch. Adding local/remote projects or deliberately focusing/starting
+    a session moves its group below pinned Chats (`touchProject`, `projectToFront`); the existing reorder IPC saves it.
+    Test add, Cmd+T, switching sessions, restart and all four themes on Mac; restore, close-pane focus and reconnect must
+    keep the saved order.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Live session (`liveSessions`): first looks up the pty pid in `~/.claude/sessions`. If a launcher keeps Claude in a
@@ -537,8 +541,12 @@ site/            the product page (static, open index.html or serve the folder; 
   adds the 3 most recently used Claude Code projects (folders of `~/.claude/projects` by mtime; the path is the newest
   transcript's `cwd`, `transcriptCwd`, since folder names are lossy; home, the chat folder and temp folders are skipped)
   and expands the newest. Never runs again, so a removed project stays removed. No Mac branch.
-- **Projects**: order = `state.projects`, changed by dragging project rows (`projDragProps`, `projDrag` pauses `renderSidebar`
-  like a session drag) or "Move to top" in the `…` menu; both call `moveProject` -> `projects:reorder`. Same-name folders:
+- **Projects**: order = `state.projects`, most recently used first below pinned Chats. `touchProject` uses the pure
+  `projectToFront` helper on deliberate `activate`, `restartTab` and local/remote adds; a multi-add keeps picker order.
+  Restore and focus handed to a neighbour after close/removal pass `touch: false`; polling, output and reconnect never
+  touch order. Removed projects stay at the bottom as orphans. Dragging project rows (`projDragProps`, `projDrag` pauses
+  `renderSidebar` like a session drag) or "Move to top" still adjusts the order until next use (`moveProject`). Both paths
+  save through `saveProjectOrder` -> `projects:reorder`, without applying stale IPC replies. Same-name folders:
   `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,
   notifications and split-group rows; the project row shows the parent as a muted `.p-parent`.
   "Remove from list" keeps the project's tabs open: `orphanProjects()` (tab projects no longer in `projects`) are drawn at

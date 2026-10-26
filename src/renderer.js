@@ -1,7 +1,7 @@
 'use strict';
 
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, api */
-/* global contextWindow, normCombo, comboOf, matchShortcut, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels, inlineMarks, linePairs -- lib/ui.js */
+/* global contextWindow, normCombo, comboOf, matchShortcut, projectToFront, distinctParent, dialogOpen, lineCells, fileMatches, jumpPill, promptBox, lineShift, claudeBanner, wheelNotch, altThumbTop, matchSessions, eolOf, withEol, activityGrid, monthLabels, inlineMarks, linePairs -- lib/ui.js */
 /* global parseMarkdown -- lib/md.js */
 
 // ------------------------------------------------------------- helpers ----
@@ -655,7 +655,7 @@ async function restoreTabs(saved) {
     if (ids.length >= 2) splits.push({ ids, cx: g.cx, ry: g.ry, v: g.v, color: splits.length % GROUP_COLORS });
   }
   const first = bySaved[saved.active] || made[0];
-  activate(first.id);
+  activate(first.id, { touch: false });
   fitTab(first);
   const firstStart = startPty(first);
   if (!first.project.remoteId) await firstStart;
@@ -1166,8 +1166,9 @@ function showOverlay(tab, message, isError = false) {
 }
 
 /** `mode`: 'resume' = the tab's current session (`--resume`), 'fresh' = a new session, else the same command as before. */
-async function restartTab(tab, mode) {
+async function restartTab(tab, mode, { touch = true } = {}) {
   if (tab.project.remoteId && tab.remoteOperation) return;
+  if (touch && touchProject(tab.project.path)) renderSidebar(true);
   if (tab.project.remoteId) tab.remoteOperation = true;
   try {
   if (tab.project.remoteId) {
@@ -1205,6 +1206,7 @@ async function relaunchTab(tab, skipPerms) {
     title: 'Relaunch this session?', message: 'Claude is working in it; relaunching stops the current task.', okLabel: 'Relaunch',
   }))) return;
   if (!tabs.has(tab.id)) return;
+  if (touchProject(tab.project.path)) renderSidebar(true);
   tab.skipPerms = skipPerms;
   if (tab.project.remoteId) {
     if (tab.runtimeId && !(await endRemote(tab))) return;
@@ -1213,14 +1215,14 @@ async function relaunchTab(tab, skipPerms) {
     if (!tabs.has(tab.id)) return;
     tab.runtimeId = null; tab.status = 'exited';
     tab.remoteOperation = false;
-    return await restartTab(tab, 'resume');
+    return await restartTab(tab, 'resume', { touch: false });
   }
   if (tab.status === 'running') {
     await new Promise((resolve) => { tab.relaunch = resolve; api.ptyKill(tab.id); });
     delete tab.relaunch;
     if (!tabs.has(tab.id)) return;
   }
-  restartTab(tab, 'resume');
+  restartTab(tab, 'resume', { touch: false });
   } finally { if (tab.project.remoteId) tab.remoteOperation = false; }
 }
 
@@ -1275,16 +1277,17 @@ async function closeTab(id) {
     activeId = null;
     // closing a focused pane hands focus to its neighbour in the split, else to the nearest tab
     const next = slot >= 0 && mates.length ? mates[Math.min(slot, mates.length - 1)] : [...tabs.keys()][Math.min(idx, tabs.size - 1)];
-    if (next) activate(next);
+    if (next) activate(next, { touch: false });
   } else syncVisible();
   renderAll();
   saveTabs();
   if (!activeId) { pollMcp(); pollDefinedAgents(); } // home screen: the user-level lists
 }
 
-function activate(id) {
+function activate(id, { touch = true } = {}) {
   const tab = tabs.get(id);
   if (!tab) return;
+  if (touch) touchProject(tab.project.path);
   if (settingsOpen) toggleSettings(false);
   activeId = id;
   tab.lastActive = Date.now();
@@ -1420,7 +1423,7 @@ function minimizePane(id) {
   if (!g) return;
   const slot = g.ids.indexOf(id);
   const mates = removeFromSplit(id); // a group left with one tab is dropped
-  if (activeId === id) activate(mates[Math.min(slot, mates.length - 1)]); // focus moves to its neighbour
+  if (activeId === id) activate(mates[Math.min(slot, mates.length - 1)], { touch: false }); // focus moves to its neighbour
   else syncVisible();
   renderSidebar(true); // the split box loses the row
   saveTabs();
@@ -2244,8 +2247,21 @@ function sessionMenu(p, s, t, e, row = null) {
   row?.classList.add('menu-open'); // keeps its … visible while the menu is open
 }
 
-// Projects are reordered by dragging their rows (a line shows where the row lands) or with "Move to top".
+// Recently used projects go first; dragging or "Move to top" can adjust the order until the next use.
 let projDrag = null; // path of the project row being dragged
+
+/** Save the current order without letting a late IPC reply overwrite a more recent local move. */
+function saveProjectOrder() {
+  api.reorderProjects(projects.map((p) => p.path)).catch((e) => console.error('Could not save project order:', e));
+}
+
+function touchProject(projectPath) {
+  const next = projectToFront(projects, projectPath);
+  if (next === projects) return false;
+  projects = next;
+  saveProjectOrder();
+  return true;
+}
 
 function projDragProps(p) {
   const clear = (el) => el.classList.remove('drop-before', 'drop-after');
@@ -2278,12 +2294,14 @@ function projDragProps(p) {
 }
 
 /** Put project `from` just before (or `after`) project `to`; main saves the order. */
-async function moveProject(from, to, after) {
+function moveProject(from, to, after) {
   const order = projects.map((x) => x.path).filter((x) => x !== from);
   const i = order.indexOf(to);
   if (i < 0) return;
   order.splice(i + (after ? 1 : 0), 0, from);
-  projects = await api.reorderProjects(order);
+  const byPath = new Map(projects.map((p) => [p.path, p]));
+  projects = order.map((p) => byPath.get(p));
+  saveProjectOrder();
   renderAll();
 }
 
@@ -4294,6 +4312,7 @@ function showProjectPicker(selected = '') {
       if (!dlg.isOpen()) return;
       if (!result.ok) { note.textContent = result.error; add.disabled = false; return; }
       projects = result.projects; closeModal?.();
+      touchProject(result.added[0]);
       expanded.add(result.added[0]); saveExpanded(); renderAll(); pollGit(); pollSessions();
     };
     content.replaceChildren(name, h('div', { class: 'remote-path-row' }, folder, go),
@@ -4336,6 +4355,7 @@ function showRemoteSetup(fromSettings = false) {
 async function addLocalProjects() {
   const { projects: list, added } = await api.addProjects();
   projects = list;
+  for (const p of added.slice().reverse()) touchProject(p); // a multi-selection keeps the picker's order
   renderAll();
   pollGit();
   if (added.length === 1) {

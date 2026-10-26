@@ -256,7 +256,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
 - Project row: chevron (14 px, `--faint`), folder icon, name (500), and on the right one status dot when anything
   in the project is live. On hover the dot is replaced by `+` (new session) and `…` (DropdownMenu: continue, open
   PowerShell, show in Explorer, move to top, remove). When another project has the same folder name, the name is
-  followed by its parent folder(s) in 11 px `--faint` (`.p-parent`). Project rows drag to reorder: a 2 px inset
+  followed by its parent folder(s) in 11 px `--faint` (`.p-parent`). Adding a local or remote project, starting/restarting
+  a session, or deliberately focusing one moves its whole project group first, below Chats; the order survives restart.
+  Restore, automatic focus after closing/removing a pane, background output, polling and reconnect do not move projects.
+  Project rows can still drag to adjust the order until the next use: a 2 px inset
   `--primary` line (`.drop-before` / `.drop-after`) shows where the row lands. Path and git info live in the tooltip; the **active** project adds one
   11 px `--faint` line under it (`branch · 3 changed`, the branch truncates first). A collapsed active project gets
   the selected background.

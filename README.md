@@ -41,7 +41,8 @@ split panes, git status and a list of the dev servers your sessions started.
 
 - **Projects and sessions.** Add a folder once, then start a session in it with one click. Past sessions are listed
   under each project by their title; click one to resume it, or right-click (or its `…`) to fork it or relaunch it with `--dangerously-skip-permissions`. On first launch the three
-  folders you used Claude Code in most recently are already there.
+  folders you used Claude Code in most recently are already there. Adding a project or starting/switching sessions
+  moves that project to the top, below Chats; the order is saved between launches.
 - **Chats without a project.** The `+` next to "add project" also offers "No project": a session for questions or
   small chores like tidying the Desktop. Chats run in `Claude Chats` in your home folder (change it in Settings >
   Chats) with your home folder added, and are listed under "Chats" at the top.
@@ -193,6 +194,10 @@ Things that differ on a Mac:
 - Markdown tabs work the same; their folder button opens Finder, and Cmd+S saves the editor at once.
 - The diff viewer is `⌘⇧G`; it runs the same `git` as the branch and change count (Xcode's, from `xcode-select --install`).
 - The home screen greets you with your macOS login name (the short one, e.g. "jsmith").
+
+Project recency uses the same code on both desktops: adding a local/remote project or starting/switching sessions
+moves its group below pinned Chats and saves the order. On a Mac, check adding projects, `⌘T`, switching sessions,
+and all four themes. Restart, closing a pane and reconnecting should preserve the order until you use another project.
 
 The home screen's design came from the standalone proposals in [mockups/home](mockups/home/README.md) (the
 "Workbench" one). Open its `index.html` in Safari or Chrome to compare the layouts; they use sample data.
