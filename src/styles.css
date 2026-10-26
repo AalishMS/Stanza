@@ -1045,6 +1045,17 @@ body.settings-open #settings { display: block; }
 .remote-device-menu .menu-item { flex-shrink: 0; }
 .remote-form .rnote { white-space: pre-wrap; overflow-wrap: anywhere; }
 .remote-folders { display: flex; flex-direction: column; gap: 12px; min-height: 80px; }
+.project-sources { display: flex; gap: 8px; flex-wrap: wrap; }
+.clone-section { display: flex; flex-direction: column; gap: 10px; }
+.clone-section-title { margin: 0; font-size: 12px; font-weight: 500; }
+.clone-link-section { margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--border); }
+.clone-section .clone-repositories { max-height: 192px; }
+.clone-repository.selected { background: var(--accent); }
+.clone-repository-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clone-empty { padding: 8px; }
+.clone-section .rnote:empty, .clone-section button[hidden] { display: none; }
+.clone-section > .btn { align-self: flex-start; }
+.remote-browser[hidden] { display: none; }
 .remote-path-row, .remote-actions { display: flex; gap: 8px; align-items: center; }
 .remote-actions { justify-content: flex-end; flex-wrap: wrap; }
 .remote-browser { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
@@ -1052,7 +1063,7 @@ body.settings-open #settings { display: block; }
 .remote-create-row { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
 .remote-create-row[hidden] { display: none; }
 .remote-entries { max-height: 240px; overflow-y: auto; padding: 4px; }
-.remote-entry { display: flex; gap: 8px; align-items: center; width: 100%; height: 32px; padding: 0 8px; background: transparent; color: var(--foreground); border: 0; border-radius: var(--radius-sm); font: inherit; text-align: left; cursor: pointer; }
+.remote-entry { display: flex; gap: 8px; align-items: center; width: 100%; height: 32px; padding: 0 8px; background: transparent; color: var(--foreground); border: 0; border-radius: var(--radius-sm); font: inherit; text-align: left; cursor: pointer; overflow: hidden; white-space: nowrap; }
 .remote-entry:hover, .remote-entry:focus-visible { background: var(--accent); }
 .remote-entry:focus-visible { outline: 1px solid var(--ring); }
 .remote-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); margin: 0 5px; }

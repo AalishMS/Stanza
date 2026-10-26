@@ -8,12 +8,12 @@ const { sshArgs, quote } = require('./lib/remote');
 
 // Install a small versioned bundle from the first stdin line, then use stdin for RPC.
 // Keeping sources off argv avoids Windows' command-line size limit.
-const bootstrap = `let b='';function install(d){b+=d;let n=b.indexOf('\\n');if(n<0)return;process.stdin.removeListener('data',install);process.stdin.pause();const fs=require('fs'),p=require('path'),o=require('os'),x=JSON.parse(b.slice(0,n));const base=p.join(o.homedir(),'.local/share/stanza/remote',x.version);fs.mkdirSync(base,{recursive:true,mode:448});for(const [name,text]of Object.entries(x.files)){const f=p.join(base,name),tmp=f+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,text,{mode:384});fs.renameSync(tmp,f);}require(p.join(base,'bridge.js'));process.stdin.resume();}process.stdin.setEncoding('utf8');process.stdin.on('data',install);`;
+const bootstrap = `let b='';function install(d){b+=d;let n=b.indexOf('\\n');if(n<0)return;process.stdin.removeListener('data',install);process.stdin.pause();const fs=require('fs'),p=require('path'),o=require('os'),x=JSON.parse(b.slice(0,n));const base=p.join(o.homedir(),'.local/share/stanza/remote',x.version);fs.mkdirSync(base,{recursive:true,mode:448});for(const [name,text]of Object.entries(x.files)){const f=p.join(base,name),tmp=f+'.'+process.pid+'.tmp';fs.mkdirSync(p.dirname(f),{recursive:true,mode:448});fs.writeFileSync(tmp,text,{mode:384});fs.renameSync(tmp,f);}require(p.join(base,'bridge.js'));process.stdin.resume();}process.stdin.setEncoding('utf8');process.stdin.on('data',install);`;
 let bundle;
 function sources() {
   if (!bundle) {
     const files = {};
-    for (const [name, rel] of [['bridge.js', 'remote/bridge.js'], ['tmux.conf', 'remote/tmux.conf'], ['remote.js', 'lib/remote.js'], ['parse.js', 'lib/parse.js'], ['diff.js', 'lib/diff.js']]) files[name] = fs.readFileSync(path.join(__dirname, rel), 'utf8').replace(/\r\n/g, '\n');
+    for (const [name, rel] of [['bridge.js', 'remote/bridge.js'], ['tmux.conf', 'remote/tmux.conf'], ['remote.js', 'lib/remote.js'], ['parse.js', 'lib/parse.js'], ['diff.js', 'lib/diff.js'], ['repository.js', 'repository.js'], ['lib/repository.js', 'lib/repository.js']]) files[name] = fs.readFileSync(path.join(__dirname, rel), 'utf8').replace(/\r\n/g, '\n');
     bundle = { files, version: crypto.createHash('sha256').update(JSON.stringify(files)).digest('hex').slice(0, 16) };
   }
   return bundle;
@@ -80,7 +80,7 @@ class Remote {
     if (op !== 'hello' && device.home && (!c.info || c.info.home !== device.home || c.info.user !== device.user || c.info.hostname !== device.hostname)) throw Error('Remote identity is unverified or changed. Reconnect before retrying.');
     return new Promise((resolve, reject) => {
       const id = ++c.next;
-      const timer = setTimeout(() => { c.pending.delete(id); reject(Error(`Remote ${op} timed out`)); }, 25000);
+      const timer = setTimeout(() => { c.pending.delete(id); reject(Error(`Remote ${op} timed out`)); }, op === 'clone' ? 130000 : 25000);
       c.pending.set(id, { resolve, reject, timer });
       c.child.stdin.write(JSON.stringify({ id, op, params: { ...params, client: this.client } }) + '\n');
     });

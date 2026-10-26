@@ -136,6 +136,14 @@ of 32 px folder rows and a primary Add project button. A New folder ghost button
 browser's toolbar reveals an inline name field with Create/Cancel. Creating opens that new
 child folder. Go (or Enter) browses the typed path. Disabled devices are omitted from the picker;
 Settings > Connections manages their names and on/off state.
+Below the device selector, outline Git URL and GitHub repository actions open a clone dialog on that device.
+The clone dialog uses the same inputs, flat 32 px repository/folder rows and right-aligned actions: Back and
+primary Clone and add project. Local destinations use a native folder picker; remote destinations use a path
+and Browse folder list. GitHub has two source sections: **Your Repositories:** (search and a flat list capped at
+192 px, selected row on `--accent` with a checkmark) and **Any Other Repository Link:** (one URL input below a
+`--border` divider). Selecting a row clears the link; entering a link clears the selection. There is no owner/Load
+control or duplicate source field. Progress and errors stay in plain status text; controls disable while cloning.
+Existing folders are never overwritten.
 Inputs follow the Input recipe; all
 surfaces use the four existing palettes. The close button stays at the dialog's right edge.
 

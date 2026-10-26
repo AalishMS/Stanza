@@ -15,6 +15,7 @@ const { scanImages } = require('./lib/images');
 const { parseDiff, parseNumstat, statusPaths, zList, lineCount, addedFile } = require('./lib/diff');
 const { isRemote, remoteKey, remoteTarget, UUID, deviceName, verifyRemoteIdentity } = require('./lib/remote');
 const { Remote } = require('./remote');
+const { cloneRepository, githubRepositories, stopRepositoryCommands } = require('./repository');
 const crypto = require('crypto');
 
 // Windows is the main platform. macOS gets small `IS_MAC` branches next to the Windows code (best effort, untested here).
@@ -1904,6 +1905,7 @@ app.on('before-quit', (e) => {
     return;
   }
   for (const s of sessions.values()) endSession(s);
+  stopRepositoryCommands();
   remote?.close();
 });
 
@@ -2117,6 +2119,40 @@ function registerIpc() {
     });
     const added = r.canceled ? [] : r.filePaths.map(addProject).filter(Boolean);
     return { projects: state.projects, added };
+  });
+
+  ipcMain.handle('projects:destination', async () => {
+    const r = await dialog.showOpenDialog(mainWindow, { title: 'Clone into this folder', properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle('projects:github', async (_e, id, owner) => {
+    try {
+      if (id) {
+        const device = state.remotes.find((d) => d.id === id);
+        if (!device) throw Error('Remote device not found');
+        return { ok: true, repos: await deviceCall(device, 'github', { owner }) };
+      }
+      await shellEnvReady; // macOS: Finder needs the login PATH for Homebrew's gh and Git
+      return { ok: true, repos: await githubRepositories(owner) };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('projects:clone', async (_e, id, value) => {
+    try {
+      let key;
+      if (id) {
+        const device = state.remotes.find((d) => d.id === id);
+        if (!device) throw Error('Remote device not found');
+        const result = await deviceCall(device, 'clone', value);
+        key = remoteKey(id, result.path);
+        if (!state.projects.some((p) => p.path === key)) state.projects.push({ path: key, remoteId: id, remotePath: result.path, name: path.posix.basename(result.path) });
+        saveState();
+      } else {
+        await shellEnvReady; // macOS: same login PATH as local sessions
+        key = addProject((await cloneRepository(value)).path);
+        if (!key) throw Error('The cloned folder is no longer available.');
+      }
+      return { ok: true, projects: state.projects, added: [key] };
+    } catch (e) { return { ok: false, error: e.message }; }
   });
 
   ipcMain.handle('projects:chat', () => chatProject());

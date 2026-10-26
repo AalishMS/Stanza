@@ -10,6 +10,7 @@ const readline = require('readline');
 const { UUID, quote, runtimeRecord, folderName } = require('./remote');
 const { parseGitStatus, parseTail, oneLine, firstPrompt, usageTokens, descendantPids, parsePs } = require('./parse');
 const { parseDiff, addedFile, zList, statusPaths } = require('./diff');
+const { cloneRepository, githubRepositories, stopRepositoryCommands } = require('./repository');
 const home = os.homedir();
 const cache = new Map();
 const locks = new Map();
@@ -243,6 +244,8 @@ const operations = {
     flock: await run('flock', ['--version']).then((s) => s.trim(), () => null) }),
   dirs: async (p) => { const cwd = await dir(p.path || home); const entries = await fs.promises.readdir(cwd, { withFileTypes: true });
     return { path: cwd, parent: path.dirname(cwd), entries: entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort().slice(0, 1000) }; },
+  github: (p) => githubRepositories(p.owner),
+  clone: (p) => cloneRepository(p),
   mkdir: async (p) => {
     const parent = await dir(p.path);
     const name = folderName(p.name);
@@ -273,6 +276,7 @@ input.on('line', (line) => {
 async function drain() {
   if (draining) return;
   draining = true; closing = true;
+  stopRepositoryCommands();
   const timeout = setTimeout(() => process.exit(1), 35000);
   await Promise.allSettled([...tasks]); clearTimeout(timeout); process.exit();
 }

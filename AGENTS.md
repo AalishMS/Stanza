@@ -78,6 +78,8 @@ src/main.js      window, ptys, git status, port scan, persistence, IPC handlers
 src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeIntegration)
 src/remote.js    desktop OpenSSH connection/helper lifecycle; src/remote/bridge.js runs on Ubuntu over stdin/stdout
 src/lib/remote.js pure remote identity, target validation and POSIX quoting; remote/tmux.conf isolates CLI keys
+src/repository.js Git/GitHub CLI cloning and repository listing, shared with the Ubuntu helper; bounded owned processes
+src/lib/repository.js pure repository source, owner and portable destination-name validation
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/lib/parse.js pure parsers for main (git, netstat, lsof/ps, transcripts, mcp list, split remap); no Electron, no fs
 src/lib/images.js  transcript image index (scanImages) for main, plus the .md files a session wrote (`docs`); fs only
@@ -149,6 +151,12 @@ site/            the product page (static, open index.html or serve the folder; 
     in the project picker. Turn on reconnects detached tabs. Same code on Mac; test Finder SSH agent access,
     add/rename/test, off/on with running sessions, restart while off, keyboard focus and all four themes.
     Device removal is absent.
+    After selecting a device, Add project also offers Git URL and GitHub repository. Both clone into a new child
+    folder on that device; GitHub uses its own `gh` login (up to 100 of your repositories). Its two source sections
+    are Your Repositories (search/select) and Any Other Repository Link (HTTPS/SSH URL); choosing either clears the other.
+    Local commands wait for `shellEnvReady` on Mac. No shell interpolation or hidden authentication prompts.
+    Test Finder-launched HTTPS/SSH clones, GitHub listing/login errors, destination selection, existing-folder errors,
+    remote destination browsing, switching between selection/link input and all four themes on Mac.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
     `shellEnvReady`: the login shell's PATH, since Finder launches get a bare PATH. Capped at 5 s because rc files can
     block (stdin closed, own process group, SIGKILLed on timeout); common folders (Homebrew, `~/.local/bin`) are appended.

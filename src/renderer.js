@@ -4276,7 +4276,11 @@ function showProjectPicker(selected = '') {
   const name = h('input', { id: 'project-name', placeholder: 'Project name (optional)', 'aria-label': 'Project name' });
   const folder = h('input', { id: 'remote-folder', placeholder: '/home/…', 'aria-label': 'Remote folder', spellcheck: 'false' });
   const add = h('button', { class: 'btn primary', disabled: true }, 'Add project');
-  const body = h('div', { class: 'ag-body remote-form' }, h('label', { for: 'project-device' }, 'Source folders'), device, deviceMenu, content, note);
+  const body = h('div', { class: 'ag-body remote-form' }, h('label', { for: 'project-device' }, 'Device'), device, deviceMenu,
+    h('div', { class: 'project-sources', 'aria-label': 'Add project from' },
+      h('button', { class: 'btn outline', onclick: () => showCloneProject(device.value, 'git') }, ico('branch'), 'Git URL'),
+      h('button', { class: 'btn outline', onclick: () => showCloneProject(device.value, 'github') }, ico('code'), 'GitHub repository')),
+    content, note);
   const dlg = openModal('Add project', null, body);
   let generation = 0;
   let currentFolder = null;
@@ -4353,6 +4357,119 @@ function showProjectPicker(selected = '') {
   }
   device.onchange = changed;
   changed(); device.focus();
+}
+
+function showCloneProject(id, kind) {
+  const github = kind === 'github';
+  const device = remotes.find((d) => d.id === id);
+  const source = h('input', { id: 'clone-source', placeholder: github ? 'https://github.com/owner/repository' : 'https://host/owner/repository.git',
+    'aria-label': github ? 'Any Other Repository Link' : 'Git URL', autocomplete: 'off', spellcheck: 'false', required: true });
+  const name = h('input', { id: 'clone-name', 'aria-label': 'New folder name', placeholder: 'repository', required: true });
+  const parent = h('input', { id: 'clone-parent', 'aria-label': 'Destination folder', placeholder: id ? '/home/…' : 'Choose a destination folder…',
+    value: device?.home || '', readonly: !id, required: true, spellcheck: 'false' });
+  const note = h('div', { class: 'rnote', role: 'status', 'aria-live': 'polite' });
+  const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Clone and add project');
+  const back = h('button', { class: 'btn outline', type: 'button', onclick: () => showProjectPicker(id) }, 'Back');
+  const folders = h('div', { class: 'remote-entries', 'aria-label': 'Destination folders' });
+  const browser = h('div', { class: 'remote-browser', hidden: true }, folders);
+  const choose = h('button', { class: 'btn outline sm', type: 'button', onclick: async () => {
+    if (id) { browser.hidden = false; await browse(parent.value); }
+    else {
+      const selected = await api.pickCloneDestination();
+      if (dlg.isOpen() && selected) parent.value = selected;
+    }
+  } }, id ? 'Browse' : 'Choose…');
+  const body = h('form', { class: 'ag-body remote-form' },
+    h('div', { class: 'rnote' }, `Clone on ${device?.name || 'This computer'}.`));
+  let generation = 0;
+  let busy = false;
+  let suggested = '';
+  let listing = 0;
+  let selectedRepo = '';
+  let renderRepos = () => {};
+  let retry;
+  const dlg = openModal(github ? 'GitHub repository' : 'Git URL', null, body);
+  function suggestName(value = source.value) {
+    const next = value.trim().replace(/\/+$/, '').split(/[/:]/).pop().replace(/\.git$/i, '');
+    if (!name.value || name.value === suggested) name.value = next;
+    suggested = next;
+  }
+  source.oninput = () => { selectedRepo = ''; source.required = true; renderRepos(); suggestName(); };
+  async function browse(value) {
+    const g = ++generation;
+    note.textContent = 'Loading folders…';
+    const result = await api.remoteDirs(id, value);
+    if (!dlg.isOpen() || g !== generation || busy) return;
+    if (!result.ok) { note.textContent = result.error; return; }
+    parent.value = result.path; note.textContent = '';
+    folders.replaceChildren(
+      h('button', { class: 'remote-entry', type: 'button', onclick: () => browse(result.parent) }, ico('arrowUp'), '..'),
+      ...result.entries.map((n) => h('button', { class: 'remote-entry', type: 'button', onclick: () => browse(`${result.path.replace(/\/$/, '')}/${n}`) }, ico('folder'), n)));
+  }
+  parent.oninput = () => { generation++; browser.hidden = true; };
+  if (github) {
+    const filter = h('input', { 'aria-label': 'Search your repositories', placeholder: 'Search your repositories…', type: 'search' });
+    const repos = h('div', { class: 'remote-entries clone-repositories', 'aria-label': 'Your Repositories' });
+    const repoNote = h('div', { class: 'rnote', role: 'status', 'aria-live': 'polite' });
+    let rows = [];
+    let loaded = false;
+    renderRepos = () => {
+      if (!loaded) return;
+      const visible = rows.filter((r) => r.name.toLowerCase().includes(filter.value.toLowerCase()));
+      repos.replaceChildren(...visible.map((r) => h('button', { class: `remote-entry clone-repository${r.name === selectedRepo ? ' selected' : ''}`,
+        type: 'button', disabled: busy, title: r.name, 'aria-pressed': String(r.name === selectedRepo),
+        onclick: () => { selectedRepo = r.name; source.value = ''; source.required = false; suggestName(r.name); renderRepos(); name.focus(); }
+      }, ico('code'), h('span', { class: 'clone-repository-name' }, r.name), r.name === selectedRepo ? ico('check') : null)));
+      if (!visible.length) repos.append(h('div', { class: 'clone-empty rnote' }, rows.length ? 'No matching repositories.' : 'No repositories found. Paste a link below.'));
+    };
+    retry = h('button', { class: 'btn ghost sm', type: 'button', hidden: true, onclick: loadRepos }, 'Try again');
+    async function loadRepos() {
+      const g = ++listing;
+      loaded = false; rows = []; repos.replaceChildren(); retry.hidden = true; repoNote.textContent = 'Loading repositories…';
+      let result;
+      try { result = await api.githubRepositories(id, ''); }
+      catch (e) { result = { ok: false, error: e.message }; }
+      if (!dlg.isOpen() || g !== listing) return;
+      if (!result.ok) { repoNote.textContent = `${result.error}\nSign in with gh auth login on this device, or paste a link below.`; retry.hidden = false; return; }
+      loaded = true; rows = result.repos; repoNote.textContent = rows.length === 100 ? 'Showing your first 100 repositories.' : ''; renderRepos();
+    }
+    filter.oninput = renderRepos;
+    body.append(h('section', { class: 'clone-section', 'aria-labelledby': 'clone-your-repositories' },
+      h('h4', { id: 'clone-your-repositories', class: 'clone-section-title' }, 'Your Repositories:'),
+      filter, h('div', { class: 'remote-browser' }, repos), repoNote, retry),
+    h('section', { class: 'clone-section clone-link-section', 'aria-labelledby': 'clone-other-repository' },
+      h('label', { id: 'clone-other-repository', class: 'clone-section-title', for: 'clone-source' }, 'Any Other Repository Link:'), source));
+    loadRepos();
+  } else body.append(h('label', { for: 'clone-source' }, 'Git URL'), source);
+  body.append(
+    h('label', { for: 'clone-parent' }, 'Destination folder'), h('div', { class: 'remote-path-row' }, parent, choose), browser,
+    h('label', { for: 'clone-name' }, 'New folder name'), name, note,
+    h('div', { class: 'remote-actions' }, back, submit));
+  body.onsubmit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    busy = true; generation++;
+    const controls = [...body.querySelectorAll('input, button')];
+    const disabled = controls.map((c) => c.disabled);
+    controls.forEach((c) => { c.disabled = true; });
+    note.textContent = 'Cloning repository…'; submit.textContent = 'Cloning…';
+    let result;
+    try { result = await api.cloneProject(id, { kind: github && selectedRepo ? 'github' : 'git', source: selectedRepo || source.value.trim(), parent: parent.value.trim(), name: name.value.trim() }); }
+    catch (e) { result = { ok: false, error: e.message }; }
+    if (result.ok) {
+      projects = result.projects;
+      const key = result.added[0]; touchProject(key); expanded.add(key); saveExpanded();
+      if (dlg.isOpen()) closeModal?.();
+      renderAll(); pollGit(); pollSessions();
+      return;
+    }
+    if (!dlg.isOpen()) return;
+    busy = false;
+    controls.forEach((c, i) => { c.disabled = disabled[i]; });
+    renderRepos();
+    note.textContent = result.error; submit.textContent = 'Clone and add project';
+  };
+  (github ? body.querySelector('input[type="search"]') : source).focus();
 }
 
 function showRemoteSetup(fromSettings = false) {
