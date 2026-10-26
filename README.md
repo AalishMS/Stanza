@@ -79,7 +79,8 @@ split panes, git status and a list of the dev servers your sessions started.
 Choose **Add project**, then select **Add remote…** in the device list. Enter an SSH alias or
 `user@hostname` (for example `aalish@g5-server`), connect, and choose a folder on the server.
 Remote projects show their device name and connection status in the sidebar. The optional
-project name changes only Stanza's label.
+project name changes only Stanza's label. **Go** (or Enter in the path field) opens the typed
+remote folder. **New folder** in the folder browser creates a child folder and opens it.
 
 The desktop needs OpenSSH and an existing working key/agent-based SSH connection. Tailscale
 hostnames work through normal SSH. On Ubuntu, install Node.js 20+, tmux, Git and Claude Code;
@@ -102,11 +103,10 @@ Start tools in the remote shell; browser access uses your own network/Tailscale 
 forwarding. A server's `localhost` address is different from your desktop's. Usage/activity
 totals still describe the local Claude account and local activity.
 
-Rename/reconnect a device from its project menu. To remove a device, first remove its projects
-and close their tabs, then use **Remove device** in the remote folder picker. Removal keeps
-remote files and processes. To change an SSH target/account, add a new device instead.
-After ending Stanza's remote sessions and removing its device, its helper directory can be
-deleted from the server if no other Stanza client uses it.
+Reconnect a device from its project menu. Device renaming and removal are not exposed in this
+interface. To change an SSH target/account, add a new device instead.
+After ending Stanza's remote sessions, its helper directory can be deleted from the server
+if no Stanza client uses it.
 
 ## Install
 
@@ -151,7 +151,8 @@ npm run shortcut    # Desktop and Start menu shortcuts
 
 Remote Ubuntu projects use macOS's `/usr/bin/ssh` and the same Cmd shortcuts as local projects.
 Test from a Finder-launched build with your SSH agent/Keychain available: add a remote folder,
-open Shell/Claude, use Option keys and mouse input, resize a mixed split, sleep/reconnect,
+create a child folder, use the device menu's arrow keys and Escape, open Shell/Claude, use
+Option keys and mouse input, resize a mixed split, sleep/reconnect,
 close/reopen a remote tab, explicitly End it, and confirm local Git stays responsive while
 the server is offline. Remote support has been exercised on Windows; these Mac checks remain
 untested here. Full steps are in [MAC_CHECKLIST.md](MAC_CHECKLIST.md).

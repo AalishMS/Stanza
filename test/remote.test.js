@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { remoteKey, remoteTarget, quote, sshArgs, runtimeRecord } = require('../src/lib/remote');
+const { remoteKey, remoteTarget, quote, sshArgs, runtimeRecord, folderName } = require('../src/lib/remote');
 const id = '12345678-1234-1234-1234-123456789abc';
 test('remote identities preserve POSIX case and distinguish devices and special paths', () => {
   assert.notEqual(remoteKey(id, '/a/Test'), remoteKey(id, '/a/test'));
@@ -29,4 +29,11 @@ test('remote live identity ignores old reused child PIDs and noninteractive nest
   assert.equal(runtimeRecord([stale, nested, current], [10, 11, 12], 20000), current);
   assert.equal(runtimeRecord([stale], [11], 20000), null);
   assert.equal(runtimeRecord([current], [13], 20000), null);
+});
+test('new remote folders accept names but reject paths, traversal, controls and oversized names', () => {
+  for (const name of ['', ' ', '.', '..', '../outside', 'a/b', 'a\\b', 'a\0b', 'a\nb', 'a\tb', 'é'.repeat(128)]) assert.throws(() => folderName(name));
+  assert.equal(folderName('New project'), 'New project');
+  assert.equal(folderName('नयाँ project'), 'नयाँ project');
+  assert.equal(folderName('.hidden'), '.hidden');
+  assert.equal(folderName("Aalish's project; $(echo test)"), "Aalish's project; $(echo test)"); // passed to fs, never a shell
 });

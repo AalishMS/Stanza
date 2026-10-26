@@ -13,6 +13,12 @@ function remoteTarget(target, port) {
   return { target, ...(port ? { port } : {}) };
 }
 const quote = (s) => "'" + String(s).replace(/'/g, "'\"'\"'") + "'";
+function folderName(name) {
+  if (typeof name !== 'string' || !name.trim() || name === '.' || name === '..' || /[\\/]/.test(name)
+      || [...name].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
+      || Buffer.byteLength(name, 'utf8') > 255) throw Error('Enter a folder name, without a path or special control characters');
+  return name;
+}
 function sshArgs(device, command, tty = false) {
   remoteTarget(device.target, device.port);
   return [tty ? '-tt' : '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
@@ -24,4 +30,4 @@ function runtimeRecord(records, pids, startedAt) {
   return records.filter((r) => r && mine.has(r.pid) && r.kind === 'interactive' && UUID.test(r.sessionId) && Number(r.startedAt) >= startedAt - 5000)
     .sort((a, b) => a.startedAt - b.startedAt)[0] || null;
 }
-module.exports = { UUID, isRemote, remoteKey, remoteTarget, quote, sshArgs, runtimeRecord };
+module.exports = { UUID, isRemote, remoteKey, remoteTarget, quote, sshArgs, runtimeRecord, folderName };

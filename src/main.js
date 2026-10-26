@@ -2053,18 +2053,19 @@ function registerIpc() {
       saveState(); return { ok: true, projects: state.projects, added: [key] };
     } catch (e) { return { ok: false, error: e.message }; }
   });
-  ipcMain.handle('remote:device', async (_e, id, action, name) => {
+  ipcMain.handle('remote:mkdir', async (_e, id, folder, name) => {
+    try {
+      const device = state.remotes.find((d) => d.id === id);
+      if (!device) throw Error('Remote device not found');
+      return { ok: true, ...await deviceCall(device, 'mkdir', { path: folder, name }) };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:reconnect', async (_e, id) => {
     try {
       const d = state.remotes.find((d) => d.id === id);
       if (!d) throw Error('Remote device not found');
-      if (action === 'reconnect') await remoteManager().check(d, true);
-      else if (action === 'rename' && typeof name === 'string' && name.trim()) d.name = name.trim().slice(0, 80);
-      else if (action === 'remove') {
-        if (state.projects.some((p) => p.remoteId === id) || [...sessions.values()].some((s) => s.remoteId === id)) throw Error('Remove this device’s projects and close its tabs first. Remote work is kept running.');
-        remote?.connections.get(id)?.stop(); remote?.connections.delete(id);
-        state.remotes = state.remotes.filter((x) => x.id !== id);
-      } else throw Error('Invalid device action');
-      saveState(); return { ok: true, remotes: state.remotes };
+      await remoteManager().check(d, true);
+      return { ok: true };
     } catch (e) { return { ok: false, error: e.message }; }
   });
   ipcMain.handle('remote:runtime', async (_e, key, handle, action) => {

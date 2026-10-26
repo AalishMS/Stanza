@@ -396,6 +396,7 @@ function openModal(title, extra, body, keys) {
     activeTab()?.term.focus();
   };
   const onKey = (e) => {
+    if (e.key === 'Escape' && document.querySelector('.remote-device-menu:popover-open')) return; // Escape closes the device menu first
     if (e.key === 'Escape') done();
     else if (!keys?.(e)) return;
     e.preventDefault();
@@ -2151,8 +2152,7 @@ async function toggleMenu(p, anchor) {
     menuItem('redo', 'Continue last conversation', () => continueLast(p)),
     menuItem('terminal', `Open ${p.remoteId ? 'Shell' : SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
     menuItem('folder', p.remoteId ? 'Copy remote path' : `Show in ${FILES_APP}`, () => p.remoteId ? api.writeClipboard(p.remotePath) : api.openFolder(p.path)),
-    p.remoteId ? menuItem('redo', `Reconnect ${remoteName(p)}`, async () => { const r = await api.remoteDevice(p.remoteId, 'reconnect'); if (!r.ok) remoteNotice(r.error); else { pollGit(); pollSessions(); } }) : null,
-    p.remoteId ? menuItem('pencil', 'Rename device…', () => renameRemote(p.remoteId)) : null,
+    p.remoteId ? menuItem('redo', `Reconnect ${remoteName(p)}`, async () => { const r = await api.reconnectRemoteDevice(p.remoteId); if (!r.ok) remoteNotice(r.error); else { pollGit(); pollSessions(); } }) : null,
     readDoc('CLAUDE.md'),
     readDoc('README.md'),
     !p.chat && top && top.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, top.path, false)) : null,
@@ -2283,6 +2283,7 @@ async function moveProject(from, to, after) {
 
 // No re-render here: closing happens on mousedown, and rebuilding the rows then would swallow the click.
 function closeMenu() {
+  document.querySelector('.remote-device-menu:popover-open')?.hidePopover();
   if (!menuFor) return;
   menuFor = null;
   $('#menu').hidden = true;
@@ -4086,26 +4087,96 @@ async function addProjects() {
   showProjectPicker();
 }
 
+function projectDevicePicker(selected) {
+  const trigger = h('button', { id: 'project-device', class: 'btn outline remote-device-trigger', type: 'button',
+    'aria-label': 'Device', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': 'project-device-menu' });
+  const menu = h('div', { id: 'project-device-menu', class: 'remote-device-menu', popover: 'auto', role: 'menu', 'aria-label': 'Device' });
+  trigger.value = selected;
+  const choices = [{ id: '', name: 'This computer', icon: 'folder' }, ...remotes.map((d) => ({ ...d, icon: 'server' }))];
+  function render() {
+    const chosen = choices.find((d) => d.id === trigger.value) || choices[0];
+    trigger.replaceChildren(ico(chosen.icon), h('span', { class: 'remote-device-name' }, chosen.name), h('span', { class: 'remote-device-chevron' }, ico('chevron')));
+    menu.replaceChildren(...choices.map((d) => h('button', {
+      class: 'menu-item', type: 'button', role: 'menuitemradio', 'aria-checked': String(d.id === trigger.value), tabindex: '-1',
+      onclick: () => { menu.hidePopover(); trigger.value = d.id; render(); trigger.focus(); trigger.dispatchEvent(new Event('change')); },
+    }, ico(d.icon), h('span', { class: 'remote-device-name' }, d.name), d.id === trigger.value ? ico('check') : h('span', { class: 'ico' }))),
+    h('div', { class: 'menu-sep', role: 'separator' }), h('button', { class: 'menu-item', type: 'button', role: 'menuitem', tabindex: '-1',
+      onclick: () => { menu.hidePopover(); trigger.value = ':add'; trigger.dispatchEvent(new Event('change')); } }, ico('plus'), 'Add remote…'));
+  }
+  function open() {
+    const rect = trigger.getBoundingClientRect();
+    menu.style.width = `${Math.min(rect.width, innerWidth - 16)}px`;
+    menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.showPopover();
+    if (menu.getBoundingClientRect().bottom > innerHeight - 8) menu.style.top = `${Math.max(8, rect.top - menu.offsetHeight - 4)}px`;
+    menu.querySelector('[aria-checked="true"]').focus();
+  }
+  trigger.onclick = () => menu.matches(':popover-open') ? menu.hidePopover() : open();
+  trigger.onkeydown = (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(); } };
+  menu.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(menu.matches(':popover-open'))));
+  menu.onkeydown = (e) => {
+    if (e.key === 'Tab') { menu.hidePopover(); return; }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const items = [...menu.querySelectorAll('button')];
+    const at = items.indexOf(document.activeElement);
+    items[e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+  };
+  render();
+  return { trigger, menu };
+}
+
 function showProjectPicker(selected = '') {
-  const device = h('select', { id: 'project-device', 'aria-label': 'Device' },
-    h('option', { value: '' }, 'This computer'),
-    remotes.map((d) => h('option', { value: d.id }, d.name)), h('option', { value: ':add' }, '+ Add remote…'));
-  device.value = selected;
+  const { trigger: device, menu: deviceMenu } = projectDevicePicker(selected);
   const content = h('div', { class: 'remote-folders' });
   const note = h('div', { class: 'rnote', role: 'status' });
   const name = h('input', { id: 'project-name', placeholder: 'Project name (optional)', 'aria-label': 'Project name' });
   const folder = h('input', { id: 'remote-folder', placeholder: '/home/…', 'aria-label': 'Remote folder', spellcheck: 'false' });
   const add = h('button', { class: 'btn primary', disabled: true }, 'Add project');
-  const body = h('div', { class: 'ag-body remote-form' }, h('label', { for: 'project-device' }, 'Source folders'), device, content, note);
+  const body = h('div', { class: 'ag-body remote-form' }, h('label', { for: 'project-device' }, 'Source folders'), device, deviceMenu, content, note);
   const dlg = openModal('Add project', null, body);
   let generation = 0;
+  let currentFolder = null;
+  let creatingFolder = false;
+  let go;
+  const createName = h('input', { id: 'remote-new-folder', placeholder: 'Folder name', 'aria-label': 'New folder name', autocomplete: 'off' });
+  const createButton = h('button', { class: 'btn outline sm', type: 'submit' }, 'Create');
+  const createCancel = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { createRow.hidden = true; newFolder.focus(); } }, 'Cancel');
+  const createRow = h('form', { class: 'remote-create-row', hidden: true }, createName, createButton,
+    createCancel);
+  const newFolder = h('button', { class: 'btn ghost sm', id: 'remote-new-folder-button', disabled: true, type: 'button', onclick: () => {
+    createRow.hidden = false; createName.value = ''; createName.focus();
+  } }, ico('folderPlus'), 'New folder');
+  createRow.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!currentFolder || creatingFolder) return;
+    const id = device.value; const parent = currentFolder; const g = generation;
+    const childName = createName.value.trim();
+    setCreating(true); note.textContent = 'Creating folder…';
+    let result;
+    try { result = await api.remoteMkdir(id, parent, childName); }
+    catch (err) { result = { ok: false, error: err.message }; }
+    finally { setCreating(false); }
+    if (!dlg.isOpen() || device.value !== id || generation !== g) return;
+    if (!result.ok) { note.textContent = result.error; createName.focus(); return; }
+    createRow.hidden = true;
+    await browse(result.path); folder.focus();
+  };
+  function setCreating(busy) {
+    creatingFolder = busy;
+    for (const control of [createName, createButton, createCancel, folder, device, go]) if (control) control.disabled = busy;
+    add.disabled = newFolder.disabled = busy || !currentFolder;
+    for (const entry of body.querySelectorAll('.remote-entry')) entry.disabled = busy;
+  }
   async function browse(folderPath) {
     const g = ++generation; const id = device.value;
+    currentFolder = null; newFolder.disabled = true; createRow.hidden = true;
     add.disabled = true; note.textContent = 'Connecting…';
     const result = await api.remoteDirs(id, folderPath);
     if (!dlg.isOpen() || generation !== g || device.value !== id) return;
     if (!result.ok) { note.textContent = result.error; return; }
-    folder.value = result.path; add.disabled = false; note.textContent = '';
+    currentFolder = result.path; folder.value = result.path; add.disabled = false; newFolder.disabled = false; note.textContent = '';
     const entries = body.querySelector('.remote-entries');
     entries.replaceChildren(
       h('button', { class: 'remote-entry', onclick: () => browse(result.parent) }, ico('arrowUp'), '..'),
@@ -4120,8 +4191,9 @@ function showProjectPicker(selected = '') {
       return;
     }
     const d = remotes.find((d) => d.id === device.value);
-    const go = h('button', { class: 'btn outline sm', onclick: () => browse(folder.value) }, 'Go');
+    go = h('button', { class: 'btn outline sm', title: 'Open the folder typed in this field (Enter)', onclick: () => browse(folder.value) }, 'Go');
     folder.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); browse(folder.value); } };
+    folder.oninput = () => { generation++; add.disabled = true; newFolder.disabled = true; currentFolder = null; };
     add.onclick = async () => {
       add.disabled = true;
       const result = await api.addRemoteProject(device.value, folder.value, name.value.trim());
@@ -4131,14 +4203,9 @@ function showProjectPicker(selected = '') {
       expanded.add(result.added[0]); saveExpanded(); renderAll(); pollGit(); pollSessions();
     };
     content.replaceChildren(name, h('div', { class: 'remote-path-row' }, folder, go),
-      h('div', { class: 'remote-entries', 'aria-label': 'Folders' }),
-      h('div', { class: 'remote-actions' },
-        h('button', { class: 'btn ghost sm', onclick: () => renameRemote(d.id) }, 'Rename device'),
-        h('button', { class: 'btn ghost sm', onclick: async () => {
-          const r = await api.remoteDevice(d.id, 'remove');
-          if (!dlg.isOpen()) return;
-          if (!r.ok) note.textContent = r.error; else { remotes = r.remotes; showProjectPicker(); }
-        } }, 'Remove device'), add));
+      h('div', { class: 'remote-browser' }, h('div', { class: 'remote-folder-toolbar' }, newFolder), createRow,
+        h('div', { class: 'remote-entries', 'aria-label': 'Folders' })),
+      h('div', { class: 'remote-actions' }, add));
     browse(d.home);
   }
   device.onchange = changed;
@@ -4167,17 +4234,6 @@ function showRemoteSetup() {
     showProjectPicker(result.device.id);
   };
   target.focus();
-}
-
-function renameRemote(id) {
-  const device = remotes.find((d) => d.id === id);
-  if (!device) return;
-  const input = h('input', { value: device.name, 'aria-label': 'Device name' });
-  const note = h('div', { class: 'rnote', role: 'status' });
-  const form = h('form', { class: 'ag-body remote-form' }, input, note, h('button', { class: 'btn primary', type: 'submit' }, 'Save'));
-  const dlg = openModal('Rename device', null, form);
-  form.onsubmit = async (e) => { e.preventDefault(); const r = await api.remoteDevice(id, 'rename', input.value); if (!dlg.isOpen()) return; if (!r.ok) note.textContent = r.error; else { remotes = r.remotes; closeModal?.(); renderAll(); } };
-  input.focus(); input.select();
 }
 
 async function addLocalProjects() {
@@ -4958,7 +5014,7 @@ function wireGlobalEvents() {
       $('#side-foot .fstat.on')?.classList.remove('on');
     }
     // the "…" button toggles the menu itself on click, so a mousedown on it must not close it first
-    if (menuFor && !e.target.closest('#menu, .project.menu-open .p-more, .session.menu-open .s-menu, #new-tab')) closeMenu();
+    if (menuFor && !e.target.closest('#menu, .remote-device-menu, #project-device, .project.menu-open .p-more, .session.menu-open .s-menu, #new-tab')) closeMenu();
   });
   window.addEventListener('blur', closeMenu);
   window.addEventListener('resize', closeMenu);

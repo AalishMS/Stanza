@@ -20,6 +20,7 @@ everything that needs checking there. Tick what works. For anything that fails, 
 
 - [ ] From a Finder-launched build, Add project → Add remote connects with `/usr/bin/ssh` and existing agent/Keychain.
 - [ ] Remote folder rows and POSIX paths render correctly, including spaces/Unicode; device labels stay readable.
+- [ ] The themed device menu supports arrows/Enter; Escape closes it before the dialog. New folder creates and opens one child; Cancel creates nothing.
 - [ ] Shell and Claude input, Cmd shortcuts, Option shortcuts, mouse and split resizing work.
 - [ ] Closing a remote tab leaves work running; reopening the history/runtime row attaches to the same process.
 - [ ] Sleep/network loss reconnects without replaying typed input; local Git/session polling stays responsive.

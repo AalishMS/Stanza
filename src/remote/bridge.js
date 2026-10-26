@@ -7,7 +7,7 @@ const os = require('os');
 const { execFile, spawn } = require('child_process');
 const crypto = require('crypto');
 const readline = require('readline');
-const { UUID, quote, runtimeRecord } = require('./remote');
+const { UUID, quote, runtimeRecord, folderName } = require('./remote');
 const { parseGitStatus, parseTail, oneLine, firstPrompt, usageTokens, descendantPids, parsePs } = require('./parse');
 const { parseDiff, addedFile, zList, statusPaths } = require('./diff');
 const home = os.homedir();
@@ -243,6 +243,14 @@ const operations = {
     flock: await run('flock', ['--version']).then((s) => s.trim(), () => null) }),
   dirs: async (p) => { const cwd = await dir(p.path || home); const entries = await fs.promises.readdir(cwd, { withFileTypes: true });
     return { path: cwd, parent: path.dirname(cwd), entries: entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort().slice(0, 1000) }; },
+  mkdir: async (p) => {
+    const parent = await dir(p.path);
+    const name = folderName(p.name);
+    const created = path.join(parent, name);
+    try { await fs.promises.mkdir(created); } // one new child only; never overwrite or create missing parents
+    catch (err) { if (err.code === 'EEXIST') throw Error('A file or folder with that name already exists.', { cause: err }); throw err; }
+    return { path: await dir(created) };
+  },
   prepare, live: (p) => live(p.client), runtimes: (p) => runtimes(p.client), terminate,
   history: async (p) => history(await dir(p.cwd)),
   status: async (p) => { const cwd = await dir(p.cwd); try { const s = await git(cwd, ['status', '--porcelain=v2', '--branch']); gitOutputs.set(cwd, s); return parseGitStatus(s); } catch { gitOutputs.delete(cwd); return null; } },

@@ -1022,14 +1022,23 @@ body.settings-open #settings { display: block; }
 .remote-project .p-run { width: 0; }
 .remote-form { gap: 12px; }
 .remote-form label { font-size: 12px; font-weight: 500; }
-.remote-form input, .remote-form select { box-sizing: border-box; width: 100%; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius-md); background: color-mix(in srgb, var(--input) 30%, var(--background)); color: var(--foreground); font: inherit; outline: none; }
-.remote-form input:focus, .remote-form select:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 30%, transparent); }
-.remote-form option { background: var(--background); color: var(--foreground); }
+.remote-form input { box-sizing: border-box; width: 100%; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--input); border-radius: var(--radius-md); background: color-mix(in srgb, var(--input) 30%, var(--background)); color: var(--foreground); font: inherit; outline: none; }
+.remote-form input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 30%, transparent); }
+.remote-device-trigger { width: 100%; justify-content: flex-start; }
+.remote-device-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.remote-device-chevron { display: inline-flex; margin-left: auto; transform: rotate(90deg); }
+.remote-device-trigger[aria-expanded="true"] .remote-device-chevron { transform: rotate(270deg); }
+.remote-device-menu { position: fixed; inset: auto; margin: 0; padding: 4px; max-height: 240px; overflow-y: auto; background: var(--popover); color: var(--foreground); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.remote-device-menu .menu-item { flex-shrink: 0; }
 .remote-form .rnote { white-space: pre-wrap; overflow-wrap: anywhere; }
 .remote-folders { display: flex; flex-direction: column; gap: 12px; min-height: 80px; }
 .remote-path-row, .remote-actions { display: flex; gap: 8px; align-items: center; }
 .remote-actions { justify-content: flex-end; flex-wrap: wrap; }
-.remote-entries { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; }
+.remote-browser { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.remote-folder-toolbar { display: flex; justify-content: flex-end; padding: 4px; border-bottom: 1px solid var(--border); }
+.remote-create-row { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.remote-create-row[hidden] { display: none; }
+.remote-entries { max-height: 240px; overflow-y: auto; padding: 4px; }
 .remote-entry { display: flex; gap: 8px; align-items: center; width: 100%; height: 32px; padding: 0 8px; background: transparent; color: var(--foreground); border: 0; border-radius: var(--radius-sm); font: inherit; text-align: left; cursor: pointer; }
 .remote-entry:hover, .remote-entry:focus-visible { background: var(--accent); }
 .remote-entry:focus-visible { outline: 1px solid var(--ring); }

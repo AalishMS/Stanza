@@ -54,10 +54,9 @@ The same checks outside that sandbox succeeded. This does not indicate a server 
    and authentication remain Claude Code's own behavior.
 6. Local and remote projects coexist, including in split view. The focused pane determines the
    project context. Status text includes `G5 server · /home/aalish/...`.
-7. Existing menus offer rename display label, reconnect, and remove. A target or account change
-   creates a new connection identity. Removing a device with referenced projects explains those
-   references; it never deletes remote folders or silently ends work. A dedicated Remote devices
-   settings page is deferred.
+7. Existing project menus offer reconnect. Device rename/remove actions have been removed at
+   the user's request; device management belongs in a later settings change. A target or account
+   change creates a new connection identity. The folder picker can create one child directory.
 
 All new controls follow `DESIGN.md` in dark, light, Claude dark, and Claude light. Preserve
 keyboard navigation, focus restoration, Escape behavior, and the existing shortcut registry.
@@ -162,8 +161,8 @@ Today `project.path` is both a filesystem path and a key throughout main, preloa
 Local `samePath()` also uses the desktop OS's path rules and lowercases paths. These assumptions
 must be removed from remote call sites before remote projects are exposed in the UI.
 
-- Persist devices as `{ id, name, target, port? }`; IDs are stable when a device is renamed.
-  Only the display name changes in place. A different endpoint/account gets a new device ID;
+- Persist devices as `{ id, name, target, port? }`; the name is chosen when adding a device.
+  Device rename/removal controls are deferred to settings. A different endpoint/account gets a new device ID;
   do not carry its old runtime handles or caches across. Validate the server/account handshake
   before reusing a saved runtime, including after an SSH alias is reconfigured.
 - Keep local project records compatible. Remote projects use `remoteId`, `remotePath` (the
