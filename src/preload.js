@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   initialClaude: process.argv.includes('--stanza-claude'),
   getState: () => ipcRenderer.invoke('state:get'),
   addRemote: (value) => ipcRenderer.invoke('remote:add', value),
+  updateRemoteDevice: (id, value) => ipcRenderer.invoke('remote:update', id, value),
   remoteDirs: (id, folder) => ipcRenderer.invoke('remote:dirs', id, folder),
   remoteMkdir: (id, folder, name) => ipcRenderer.invoke('remote:mkdir', id, folder, name),
   addRemoteProject: (id, folder, name) => ipcRenderer.invoke('remote:project', id, folder, name),

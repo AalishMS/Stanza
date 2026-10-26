@@ -134,7 +134,8 @@ the menu on repeated trigger clicks. Local selection keeps the native folder pic
 Remote selection shows an optional project name, a path field with Go, a flat scrollable list
 of 32 px folder rows and a primary Add project button. A New folder ghost button in the folder
 browser's toolbar reveals an inline name field with Create/Cancel. Creating opens that new
-child folder. Go (or Enter) browses the typed path. Rename/remove device controls are absent.
+child folder. Go (or Enter) browses the typed path. Disabled devices are omitted from the picker;
+Settings > Connections manages their names and on/off state.
 Inputs follow the Input recipe; all
 surfaces use the four existing palettes. The close button stays at the dialog's right edge.
 
@@ -176,7 +177,7 @@ different projects it sits at the top of the list and each row shows its project
 `#settings` covers the terminal area (top bar, sidebars and status bar stay). Centered 840 px column, 32 px padding:
 title 18 px / 600 with a ghost `×`, then a two-column layout (shadcn's settings example): a 168 px sticky section nav
 (32 px rows, 14 px icon, `--muted-foreground`; hover `--sidebar-hover`; the open one `--accent` bg, `--foreground`,
-500) and the open section. Sections: **Appearance** (default), **Chats** and **Shortcuts**; the open one is runtime only. A
+500) and the open section. Sections: **Appearance** (default), **Connections**, **Chats** and **Shortcuts**; the open one is runtime only. A
 section header has a 14 px / 600 title, a 12 px muted line, an optional `Reset all` outline sm button on the right, and
 a 1 px `--border` rule under it.
 
@@ -192,6 +193,14 @@ revealed by a growing `clip-path`, 700 ms). Reduced motion turns all of it off. 
 `--foreground` when selected. **Accent color**: outline-style option buttons (h 32) with a 14 px swatch dot + name;
 selected = `--ring` border. **Terminal text size**: outline icon `−` / `+`, the value in mono, and a ghost
 "Reset to 14" when changed. **Interface zoom** uses the same control (`110 %`, "Reset to 100 %"). All are `role=radio` groups; a re-render puts focus back on the same control (`data-fk`).
+
+Connections: an outline sm **Add connection** action in the section header, a muted explanation, then
+one field per saved SSH device separated by the usual `--border` rules. The header pairs a server icon,
+device name and muted target/port with an On/Off label and a compact accessible switch (32 × 18 px,
+`--input` off, `--primary` on; ordinary focus ring, no animation). A status dot and plain text show
+Connected, Connecting, Offline or Off. Test connection (outline sm), Rename and Add project (ghost sm)
+sit below; results and errors wrap in `.set-note` lines. Off disables testing and project creation.
+Adding and renaming use the existing dialog and input recipes. All four palettes share these tokens.
 
 Chats: one field, **Chat folder**: the path in a bordered box (`.set-path`, 12 px muted, `rounded-md`, wraps anywhere),
 then `Change…` (outline sm, folder icon), `Show in Explorer` (ghost sm) and, when not the default, `Reset to default`

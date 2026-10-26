@@ -23,6 +23,7 @@ class Remote {
   constructor(client, changed) { this.client = client; this.changed = changed; this.connections = new Map(); }
   state(device, status, error) { this.changed(device.id, { status, error: error || null }); }
   async connect(device, force = false) {
+    if (device.enabled === false) throw Error('Connection is off. Turn it on in Settings > Connections.');
     let c = this.connections.get(device.id);
     if (force && c) { c.stop(); this.connections.delete(device.id); c = null; }
     if (c?.ready) return c.ready;
@@ -52,6 +53,7 @@ class Remote {
       child.on('exit', () => fail(Error(stderr.trim() || 'SSH connection ended')));
       child.stdout.setEncoding('utf8');
       child.stdout.on('data', (d) => {
+        if (c.failed) return;
         stdout += d;
         if (stdout.length > 32 * 1024 * 1024) { fail(Error('Remote response is too large')); return; }
         let end;
@@ -96,10 +98,17 @@ class Remote {
     return info;
   }
   attach(device, handle) {
+    if (device.enabled === false) throw Error('Connection is off. Turn it on in Settings > Connections.');
     const { UUID } = require('./lib/remote');
     if (!UUID.test(handle)) throw Error('Invalid runtime');
     const command = ['tmux', '-L', `stanza-${this.client}`, 'attach-session', '-t', `stanza-${handle}`].map(quote).join(' ');
     return { file: process.platform === 'darwin' ? '/usr/bin/ssh' : 'ssh.exe', argv: sshArgs(device, command, true) };
+  }
+  disconnect(device, error) {
+    const c = this.connections.get(device.id);
+    this.connections.delete(device.id);
+    c?.stop?.();
+    this.state(device, device.enabled === false ? 'disabled' : 'offline', error);
   }
   close() { for (const c of this.connections.values()) c.stop?.(); this.connections.clear(); }
 }

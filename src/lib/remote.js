@@ -12,6 +12,13 @@ function remoteTarget(target, port) {
   if (port != null && (!Number.isInteger(port) || port < 1 || port > 65535)) throw Error('Invalid SSH port');
   return { target, ...(port ? { port } : {}) };
 }
+function deviceName(name) {
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80 || [...name].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) throw Error('Enter a device name between 1 and 80 characters, without control characters');
+  return name.trim();
+}
+function verifyRemoteIdentity(device, info) {
+  if (device.home && (device.home !== info.home || device.user !== info.user || device.hostname !== info.hostname)) throw Error('Remote identity changed. Add this server as a new device.');
+}
 const quote = (s) => "'" + String(s).replace(/'/g, "'\"'\"'") + "'";
 function folderName(name) {
   if (typeof name !== 'string' || !name.trim() || name === '.' || name === '..' || /[\\/]/.test(name)
@@ -30,4 +37,4 @@ function runtimeRecord(records, pids, startedAt) {
   return records.filter((r) => r && mine.has(r.pid) && r.kind === 'interactive' && UUID.test(r.sessionId) && Number(r.startedAt) >= startedAt - 5000)
     .sort((a, b) => a.startedAt - b.startedAt)[0] || null;
 }
-module.exports = { UUID, isRemote, remoteKey, remoteTarget, quote, sshArgs, runtimeRecord, folderName };
+module.exports = { UUID, isRemote, remoteKey, remoteTarget, quote, sshArgs, runtimeRecord, folderName, deviceName, verifyRemoteIdentity };

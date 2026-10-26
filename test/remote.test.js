@@ -1,8 +1,21 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { remoteKey, remoteTarget, quote, sshArgs, runtimeRecord, folderName } = require('../src/lib/remote');
+const { remoteKey, remoteTarget, quote, sshArgs, runtimeRecord, folderName, deviceName, verifyRemoteIdentity } = require('../src/lib/remote');
 const id = '12345678-1234-1234-1234-123456789abc';
+
+test('device names are trimmed, preserve Unicode, and reject empty or unsafe labels', () => {
+  assert.equal(deviceName('  Build server  '), 'Build server');
+  assert.equal(deviceName('नयाँ Mac'), 'नयाँ Mac');
+  for (const name of [null, 12, '', '  ', 'a'.repeat(81), 'a\nb', 'a\0b', 'a\x7fb']) assert.throws(() => deviceName(name));
+});
+
+test('testing or reconnecting a saved device cannot accept another remote identity', () => {
+  const info = { home: '/home/user', user: 'user', hostname: 'build' };
+  assert.doesNotThrow(() => verifyRemoteIdentity({}, info)); // first connection records this identity
+  assert.doesNotThrow(() => verifyRemoteIdentity({ ...info }, info));
+  for (const key of ['home', 'user', 'hostname']) assert.throws(() => verifyRemoteIdentity({ ...info, [key]: 'different' }, info), /identity changed/);
+});
 test('remote identities preserve POSIX case and distinguish devices and special paths', () => {
   assert.notEqual(remoteKey(id, '/a/Test'), remoteKey(id, '/a/test'));
   assert.notEqual(remoteKey(id, '/a'), remoteKey(id.replace('abc', 'def'), '/a'));

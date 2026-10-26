@@ -103,8 +103,12 @@ Start tools in the remote shell; browser access uses your own network/Tailscale 
 forwarding. A server's `localhost` address is different from your desktop's. Usage/activity
 totals still describe the local Claude account and local activity.
 
-Reconnect a device from its project menu. Device renaming and removal are not exposed in this
-interface. To change an SSH target/account, add a new device instead.
+**Settings > Connections** lists saved devices and lets you **Add connection**, **Rename** a device,
+**Test connection**, or **Add project** on it. Its On/Off switch is saved across restarts. Turning it off
+detaches local tabs and pauses remote polling/reconnection; remote sessions keep running in tmux.
+Turn it back on to reconnect. Testing checks SSH access and the remote helper's requirements and identity;
+it reports when Claude Code is missing (shell sessions still work). You can also reconnect from the
+project menu. To change an SSH target/account, add a new device instead.
 After ending Stanza's remote sessions, its helper directory can be deleted from the server
 if no Stanza client uses it.
 
@@ -150,8 +154,10 @@ npm run shortcut    # Desktop and Start menu shortcuts
 ### macOS
 
 Remote Ubuntu projects use macOS's `/usr/bin/ssh` and the same Cmd shortcuts as local projects.
-Test from a Finder-launched build with your SSH agent/Keychain available: add a remote folder,
-create a child folder, toggle the device menu with repeated clicks and use its arrow keys and Escape, open Shell/Claude, use
+Test from a Finder-launched build with your SSH agent/Keychain available: add and rename a device
+in Settings > Connections, test it, toggle it off/on, and restart with it off
+to check persistence and that it makes no connection attempts. Check keyboard focus and all four themes.
+Add a remote folder, create a child folder, toggle the device menu with repeated clicks and use its arrow keys and Escape, open Shell/Claude, use
 Option keys and mouse input, resize a mixed split, sleep/reconnect,
 close/reopen a remote tab, explicitly End it, and confirm local Git stays responsive while
 the server is offline. Remote support has been exercised on Windows; these Mac checks remain

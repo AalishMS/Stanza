@@ -703,6 +703,18 @@ body.settings-open #settings { display: block; }
 .set-field-desc { margin: 2px 0 12px; font-size: 12px; color: var(--muted-foreground); }
 .set-path { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 12px; color: var(--muted-foreground); overflow-wrap: anywhere; user-select: text; }
 .set-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.connection-head { display: flex; align-items: center; gap: 10px; }
+.connection-head > .ico { flex: none; color: var(--muted-foreground); }
+.connection-target { margin-top: 3px; font-size: 12px; color: var(--muted-foreground); overflow-wrap: anywhere; user-select: text; }
+.connection .set-field-name { overflow-wrap: anywhere; }
+.connection-status { display: flex; align-items: center; gap: 4px; margin-top: 12px; font-size: 12px; color: var(--muted-foreground); }
+.connection .set-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.connection-switch { flex: none; width: 32px; height: 18px; padding: 2px; border: 0; border-radius: var(--radius-md); background: var(--input); cursor: pointer; }
+.connection-switch > span { display: block; width: 14px; height: 14px; border-radius: var(--radius-sm); background: var(--background); }
+.connection-switch[aria-checked="true"] { background: var(--primary); }
+.connection-switch[aria-checked="true"] > span { margin-left: 14px; background: var(--primary-foreground); }
+.connection-switch:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.connection-switch:disabled { opacity: .5; cursor: default; }
 .theme-opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; max-width: 680px; }
 .theme-opt { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; color: var(--muted-foreground); font-size: 12px; font-weight: 500; text-align: center; cursor: pointer; }
 .theme-opt:hover, .theme-opt.on { color: var(--foreground); }

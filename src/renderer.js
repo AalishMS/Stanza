@@ -751,19 +751,23 @@ function remoteNotice(message) {
 
 function remoteDisconnected(tab, message = 'Connection lost. Remote work may still be running.') {
   if (!tabs.has(tab.id) || tab.remoteEnded) return;
+  const disabled = remotes.find((d) => d.id === tab.project.remoteId)?.enabled === false || remoteStatuses[tab.project.remoteId]?.status === 'disabled';
+  if (disabled) message = 'Connection is off. Turn it on in Settings → Connections. Remote sessions keep running.';
   tab.status = 'disconnected'; tab.busy = false;
   tab.host.querySelector('.overlay')?.remove();
   tab.host.append(h('div', { class: 'overlay' },
     h('span', { class: 'msg' }, message),
-    h('button', { class: 'btn outline sm', onclick: () => reconnectRemote(tab) }, 'Reconnect'),
+    disabled ? h('button', { class: 'btn outline sm', onclick: () => { settingsTab = 'connections'; toggleSettings(true); renderSettings(); } }, 'Connections')
+      : h('button', { class: 'btn outline sm', onclick: () => reconnectRemote(tab) }, 'Reconnect'),
     h('button', { class: 'btn ghost sm', onclick: () => closeTab(tab.id) }, 'Close tab (keep running)')));
   clearTimeout(tab.reconnectTimer);
-  tab.reconnectTimer = setTimeout(() => reconnectRemote(tab), Math.min(30000, 2000 * 2 ** Math.min(tab.reconnectAttempts || 0, 4)));
+  if (!disabled) tab.reconnectTimer = setTimeout(() => reconnectRemote(tab), Math.min(30000, 2000 * 2 ** Math.min(tab.reconnectAttempts || 0, 4)));
   renderSidebar(true); renderStatus();
 }
 
 async function reconnectRemote(tab) {
   if (!tabs.has(tab.id) || tab.status === 'running' || tab.startingPty) return;
+  if (remotes.find((d) => d.id === tab.project.remoteId)?.enabled === false) return;
   clearTimeout(tab.reconnectTimer);
   tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
   await startPty(tab);
@@ -2094,6 +2098,8 @@ function renderSidebar(force = false) {
 function projectRow(p, isActive, isOpen, orphan = false) {
   const dots = tabsOf(p.path).map(tabDot);
   const run = ['attention', 'working', 'running'].find((d) => dots.includes(d));
+  const connection = remotes.find((d) => d.id === p.remoteId)?.enabled === false ? { status: 'disabled' } : remoteStatuses[p.remoteId];
+  const connectionLabel = connection?.status === 'disabled' ? 'Connection off' : `Server ${connection?.status || 'not connected'}`;
   return h('div', {
     class: `project${p.remoteId ? ' remote-project' : ''}${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}${orphan ? ' orphan' : ''}`,
     title: [displayPath(p), gitSummary(git[p.path]), orphan ? 'Removed from the list: shown while its sessions are open'
@@ -2108,7 +2114,7 @@ function projectRow(p, isActive, isOpen, orphan = false) {
     h('span', { class: 'p-icon' }, ico(p.remoteId ? 'server' : p.chat ? 'chat' : 'folder')),
     h('span', { class: 'p-name' }, p.name, !p.remoteId && projParent(p) ? h('span', { class: 'p-parent' }, projParent(p)) : null),
     p.remoteId ? h('span', { class: 'p-device', title: remoteName(p) }, remoteName(p)) : null,
-    p.remoteId ? h('span', { class: `remote-dot ${remoteStatuses[p.remoteId]?.status || 'offline'}`, title: remoteStatuses[p.remoteId]?.error || `Server ${remoteStatuses[p.remoteId]?.status || 'not connected'}`, 'aria-label': `Server ${remoteStatuses[p.remoteId]?.status || 'not connected'}` }) : null,
+    p.remoteId ? h('span', { class: `remote-dot ${connection?.status || 'offline'}`, title: connection?.error || connectionLabel, 'aria-label': connectionLabel }) : null,
     h('span', { class: 'p-run', title: run ? 'Something is running' : null }, !p.remoteId && run ? h('i', { class: `dot ${run}` }) : null),
     orphan ? null : h('div', { class: 'p-acts' },
       rowButton('plus', 'New Claude session', () => openSession(p)),
@@ -2632,7 +2638,9 @@ let settingsTab = 'appearance'; // section shown on the settings page (runtime o
 let recording = null; // { id, index } while waiting for keys: index of the combo to replace, or -1 to add one
 let keysNote = null; // { text, err } under the section header after the last change
 
-const SETTINGS_TABS = [['appearance', 'Appearance', 'palette'], ['chats', 'Chats', 'chat'], ['shortcuts', 'Shortcuts', 'keyboard']];
+const SETTINGS_TABS = [['appearance', 'Appearance', 'palette'], ['connections', 'Connections', 'server'], ['chats', 'Chats', 'chat'], ['shortcuts', 'Shortcuts', 'keyboard']];
+const connectionBusy = new Set();
+const connectionNotes = new Map();
 let chatInfo = null; // { dir, isDefault, isHome } of the "No project" chat folder (main)
 let chatNote = null; // { text, err } after the last change on the Chats page
 const THEMES = [['dark', 'Dark'], ['light', 'Light'], ['system', 'System']];
@@ -2671,7 +2679,7 @@ function renderSettings() {
           'aria-current': settingsTab === id ? 'page' : null,
           onclick: () => { settingsTab = id; recording = keysNote = chatNote = null; renderSettings(); },
         }, ico(icon), label))),
-      settingsTab === 'shortcuts' ? shortcutsSection() : settingsTab === 'chats' ? chatsSection() : appearanceSection())));
+      settingsTab === 'shortcuts' ? shortcutsSection() : settingsTab === 'chats' ? chatsSection() : settingsTab === 'connections' ? connectionsSection() : appearanceSection())));
   if (fk) $(`#settings [data-fk="${fk}"]`)?.focus();
 }
 
@@ -2680,6 +2688,84 @@ const secHead = (title, desc, action = null) => h('div', { class: 'set-sec-head'
 
 const setField = (name, desc, control) => h('div', { class: 'set-field' },
   h('div', { class: 'set-field-name' }, name), h('div', { class: 'set-field-desc' }, desc), control);
+
+function connectionsSection() {
+  return h('section', {},
+    secHead('Connections', 'Manage the devices you connect to over SSH.',
+      h('button', { class: 'btn outline sm', 'data-fk': 'connection-add', onclick: () => showRemoteSetup(true) }, ico('plus'), 'Add connection')),
+    h('p', { class: 'set-note' }, 'Connect to an Ubuntu device using your SSH keys and config. Turning a connection off detaches its tabs and pauses reconnecting. Remote sessions keep running.'),
+    !remotes.length ? setField('No connections yet', 'Add a device, then choose a folder on it to start a remote session.', null) : null,
+    remotes.map((d) => {
+      const enabled = d.enabled !== false;
+      const busy = connectionBusy.has(d.id);
+      const status = enabled ? remoteStatuses[d.id]?.status || 'offline' : 'disabled';
+      const label = { connected: 'Connected', connecting: 'Connecting…', offline: 'Offline', disabled: 'Off' }[status] || 'Offline';
+      const note = connectionNotes.get(d.id);
+      const error = enabled && remoteStatuses[d.id]?.error;
+      return h('div', { class: 'set-field connection', 'data-device': d.id },
+        h('div', { class: 'connection-head' }, ico('server'), h('div', { class: 'set-text' },
+          h('div', { class: 'set-field-name' }, d.name),
+          h('div', { class: 'connection-target' }, d.target, d.port ? ` · Port ${d.port}` : '')),
+        h('span', { class: 'set-hint' }, enabled ? 'On' : 'Off'),
+        h('button', { class: 'connection-switch', role: 'switch', 'aria-checked': String(enabled), 'aria-label': `Connection to ${d.name}`,
+          'data-fk': `connection-toggle-${d.id}`, disabled: busy, onclick: () => connectionAction(d, { enabled: !enabled }) }, h('span'))),
+        h('div', { class: 'connection-status', role: 'status' }, h('span', { class: `remote-dot ${status}` }), label),
+        note || error ? h('p', { class: `set-note${error || note?.err ? ' err' : ''}`, role: 'status' }, error || note?.text) : null,
+        h('div', { class: 'set-acts' },
+          h('button', { class: 'btn outline sm', 'data-fk': `connection-test-${d.id}`, disabled: busy || !enabled,
+            onclick: () => connectionAction(d) }, busy ? 'Working…' : 'Test connection'),
+          h('button', { class: 'btn ghost sm', 'data-fk': `connection-rename-${d.id}`, disabled: busy, onclick: () => renameConnection(d) }, 'Rename'),
+          h('button', { class: 'btn ghost sm', 'data-fk': `connection-project-${d.id}`, disabled: busy || !enabled, onclick: () => showProjectPicker(d.id) }, ico('folderPlus'), 'Add project')));
+    }));
+}
+
+async function connectionAction(device, change) {
+  if (connectionBusy.has(device.id)) return;
+  connectionBusy.add(device.id);
+  connectionNotes.delete(device.id);
+  renderSettings();
+  try {
+    const r = change ? await api.updateRemoteDevice(device.id, change) : await api.reconnectRemoteDevice(device.id);
+    if (r.remotes) remotes = r.remotes;
+    if (r.remoteStatuses) remoteStatuses = r.remoteStatuses;
+    connectionNotes.set(device.id, r.ok
+      ? { text: change ? (change.enabled ? 'Connection turned on.' : 'Connection turned off. Remote sessions keep running.')
+        : `Connection successful. Connected to ${r.info.user}@${r.info.hostname}.${r.info.claude ? '' : ' Claude Code is not installed; shell sessions are available.'}` }
+      : { text: r.error, err: true });
+    if (change?.enabled === false && r.ok) {
+      for (const t of tabs.values()) if (t.project.remoteId === device.id && !t.remoteEnded) remoteDisconnected(t);
+    } else if (r.ok) {
+      for (const t of tabs.values()) if (t.project.remoteId === device.id && t.status === 'disconnected') reconnectRemote(t);
+      pollGit(true); pollSessions(true);
+    }
+    if (change?.enabled === true && !r.ok) {
+      for (const t of tabs.values()) if (t.project.remoteId === device.id && t.status === 'disconnected') remoteDisconnected(t);
+    }
+  } catch (e) { connectionNotes.set(device.id, { text: e.message, err: true }); }
+  finally { connectionBusy.delete(device.id); renderAll(); renderSettings(); }
+}
+
+function renameConnection(device) {
+  const name = h('input', { id: 'connection-name', value: device.name, maxlength: '80', required: true, 'aria-label': 'Device name', autocomplete: 'off' });
+  const note = h('p', { class: 'set-note err', role: 'status' });
+  const save = h('button', { class: 'btn primary', type: 'submit' }, 'Save name');
+  const form = h('form', { class: 'ag-body remote-form' }, h('label', { for: 'connection-name' }, 'Device name'), name, note,
+    h('div', { class: 'remote-actions' }, h('button', { class: 'btn outline', type: 'button', onclick: () => closeModal?.() }, 'Cancel'), save));
+  const dlg = openModal('Rename device', null, form);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); save.disabled = true;
+    try {
+      const r = await api.updateRemoteDevice(device.id, { name: name.value.trim() });
+      if (r.remotes) { remotes = r.remotes; renderAll(); renderSettings(); }
+      if (!dlg.isOpen()) return;
+      if (!r.ok) { note.textContent = r.error; return; }
+      closeModal?.();
+      $(`#settings [data-fk="connection-rename-${device.id}"]`)?.focus();
+    } catch (e) { if (dlg.isOpen()) note.textContent = e.message; }
+    finally { save.disabled = false; }
+  };
+  name.focus(); name.select();
+}
 
 /** Where "No project" sessions run. Changing it waits until no chat is open (their tabs belong to the old folder). */
 function chatsSection() {
@@ -4093,7 +4179,7 @@ function projectDevicePicker(selected) {
     popovertarget: 'project-device-menu', popovertargetaction: 'toggle' });
   const menu = h('div', { id: 'project-device-menu', class: 'remote-device-menu', popover: 'auto', role: 'menu', 'aria-label': 'Device' });
   trigger.value = selected;
-  const choices = [{ id: '', name: 'This computer', icon: 'folder' }, ...remotes.map((d) => ({ ...d, icon: 'server' }))];
+  const choices = [{ id: '', name: 'This computer', icon: 'folder' }, ...remotes.filter((d) => d.enabled !== false).map((d) => ({ ...d, icon: 'server' }))];
   function render() {
     const chosen = choices.find((d) => d.id === trigger.value) || choices[0];
     trigger.replaceChildren(ico(chosen.icon), h('span', { class: 'remote-device-name' }, chosen.name), h('span', { class: 'remote-device-chevron' }, ico('chevron')));
@@ -4220,9 +4306,9 @@ function showProjectPicker(selected = '') {
   changed(); device.focus();
 }
 
-function showRemoteSetup() {
-  const target = h('input', { id: 'remote-target', placeholder: 'aalish@g5-server', 'aria-label': 'SSH target', autocomplete: 'off', spellcheck: 'false' });
-  const name = h('input', { id: 'remote-name', placeholder: 'G5 server', 'aria-label': 'Display name' });
+function showRemoteSetup(fromSettings = false) {
+  const target = h('input', { id: 'remote-target', placeholder: 'user@hostname', 'aria-label': 'SSH target', autocomplete: 'off', spellcheck: 'false' });
+  const name = h('input', { id: 'remote-name', placeholder: 'My server', 'aria-label': 'Display name' });
   const port = h('input', { id: 'remote-port', type: 'number', min: '1', max: '65535', placeholder: 'From SSH config (usually 22)', 'aria-label': 'SSH port' });
   const note = h('div', { class: 'rnote', role: 'status' }, 'Uses your existing SSH keys and config. Requires Node.js 20+ and tmux on Ubuntu. Setup installs a small Stanza helper under ~/.local/share/stanza/remote.');
   const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Connect');
@@ -4230,16 +4316,19 @@ function showRemoteSetup() {
     h('label', { for: 'remote-target' }, 'SSH target'), target,
     h('label', { for: 'remote-name' }, 'Display name'), name,
     h('label', { for: 'remote-port' }, 'Port (optional)'), port, note,
-    h('div', { class: 'remote-actions' }, h('button', { class: 'btn outline', type: 'button', onclick: () => showProjectPicker() }, 'Back'), submit));
-  const dlg = openModal('Add remote', null, form);
+    h('div', { class: 'remote-actions' }, h('button', { class: 'btn outline', type: 'button', onclick: () => fromSettings ? closeModal?.() : showProjectPicker() }, fromSettings ? 'Cancel' : 'Back'), submit));
+  const dlg = openModal(fromSettings ? 'Add connection' : 'Add remote', null, form);
   form.onsubmit = async (e) => {
     e.preventDefault(); submit.disabled = true; note.textContent = 'Connecting…';
-    const result = await api.addRemote({ target: target.value.trim(), name: name.value.trim(), port: port.value ? Number(port.value) : undefined });
+    let result;
+    try { result = await api.addRemote({ target: target.value.trim(), name: name.value.trim(), port: port.value ? Number(port.value) : undefined }); }
+    catch (e) { result = { ok: false, error: e.message }; }
+    if (result.remotes) { remotes = result.remotes; renderSettings(); }
     if (!dlg.isOpen()) return;
     submit.disabled = false;
     if (!result.ok) { note.textContent = `${result.error}\nCheck that ssh ${target.value.trim()} works in your terminal first. New host keys or locked keys must be handled there.`; return; }
-    remotes = result.remotes;
-    showProjectPicker(result.device.id);
+    if (fromSettings) { closeModal?.(); renderSettings(); $('#settings [data-fk="connection-add"]')?.focus(); }
+    else showProjectPicker(result.device.id);
   };
   target.focus();
 }
@@ -4774,7 +4863,7 @@ const remoteSessionsBusy = new Set();
 function remoteProjects(all, sessions = false) {
   if (document.hidden) return [];
   const shown = new Set([currentProject()?.path, ...expanded, ...[...tabs.values()].map((t) => t.project.path)]);
-  return [...projects, ...orphanProjects()].filter((p) => p.remoteId && (all || (sessions ? shown.has(p.path) : currentProject()?.path === p.path)));
+  return [...projects, ...orphanProjects()].filter((p) => p.remoteId && remotes.find((d) => d.id === p.remoteId)?.enabled !== false && (all || (sessions ? shown.has(p.path) : currentProject()?.path === p.path)));
 }
 function pollRemoteGit(all) {
   for (const p of remoteProjects(all)) {
@@ -4949,7 +5038,12 @@ async function pollPorts() {
 // ------------------------------------------------------------------ init ----
 
 function wireGlobalEvents() {
-  api.onRemoteStatus((id, status) => { remoteStatuses[id] = status; renderSidebar(true); });
+  api.onRemoteStatus((id, status) => {
+    remoteStatuses[id] = status;
+    if (status.status === 'disabled') for (const t of tabs.values()) if (t.project.remoteId === id && !t.remoteEnded) remoteDisconnected(t);
+    renderSidebar(true);
+    if (settingsTab === 'connections') renderSettings();
+  });
   api.onPtyData((id, data) => {
     const tab = tabs.get(id);
     if (!tab) return;

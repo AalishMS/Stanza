@@ -142,7 +142,13 @@ site/            the product page (static, open index.html or serve the folder; 
     Add-project device selection uses a themed native popover with `popovertarget` toggling (repeated clicks,
     Arrow keys/Enter/Escape); New folder creates
     one validated child directory via the Ubuntu helper. These share the Windows path; test keyboard
-    focus and folder creation on Mac too. Device rename/remove actions and their IPC are absent.
+    focus and folder creation on Mac too. Settings > Connections adds devices, renames them and tests
+    access via the existing SSH/helper path. `remote:update` saves names and `enabled`; missing `enabled`
+    means on for existing devices. Off stops the helper and local SSH attachments without ending tmux,
+    blocks new connections in Remote, skips renderer polling and automatic reconnect, and hides the device
+    in the project picker. Turn on reconnects detached tabs. Same code on Mac; test Finder SSH agent access,
+    add/rename/test, off/on with running sessions, restart while off, keyboard focus and all four themes.
+    Device removal is absent.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
     `shellEnvReady`: the login shell's PATH, since Finder launches get a bare PATH. Capped at 5 s because rc files can
     block (stdin closed, own process group, SIGKILLed on timeout); common folders (Homebrew, `~/.local/bin`) are appended.
@@ -267,7 +273,8 @@ site/            the product page (static, open index.html or serve the folder; 
   room for them divide by `--zoom`. Terminals refit through their ResizeObservers.
 - **Settings page** (`#settings` over `#main`, gear at the left of the sidebar footer or `Ctrl+,`; `toggleSettings` /
   `renderSettings`): a section nav (`SETTINGS_TABS`, `settingsTab`, runtime only) with Appearance (`appearanceSection`:
-  theme preview cards, accent options, terminal text size, interface zoom), Chats (`chatsSection`: the chat folder, see "Chats") and Shortcuts (`shortcutsSection`, a bordered card per group).
+  theme preview cards, accent options, terminal text size, interface zoom), Connections (`connectionsSection`: saved SSH devices, add/rename/test and persistent on/off),
+  Chats (`chatsSection`: the chat folder, see "Chats") and Shortcuts (`shortcutsSection`, a bordered card per group).
   A re-render refocuses the control that had focus (`data-fk`). Shortcuts: clicking a chip (or +) records the next combo with Ctrl/Alt/Cmd (or an F key);
   a combo another action uses is moved over (`keysNote` says so). Esc cancels recording, then closes the page; activating
   any tab closes it too.

@@ -13,7 +13,7 @@ const {
 } = require('./lib/parse');
 const { scanImages } = require('./lib/images');
 const { parseDiff, parseNumstat, statusPaths, zList, lineCount, addedFile } = require('./lib/diff');
-const { isRemote, remoteKey, remoteTarget, UUID } = require('./lib/remote');
+const { isRemote, remoteKey, remoteTarget, UUID, deviceName, verifyRemoteIdentity } = require('./lib/remote');
 const { Remote } = require('./remote');
 const crypto = require('crypto');
 
@@ -256,10 +256,21 @@ async function remoteCall(key, op, params = {}) {
   return deviceCall(device, op, { ...params, cwd: project.remotePath });
 }
 async function deviceCall(device, op, params = {}) {
-  const info = await remoteManager().check(device);
-  if (device.home && (device.home !== info.home || device.user !== info.user || device.hostname !== info.hostname)) throw Error('Remote identity changed. Add this server as a new device.');
+  const info = await checkRemoteDevice(device);
   if (op === 'prepare' && params.kind === 'claude' && !info.claude) throw Error('Claude Code is missing on the server. Open a remote Shell to install it.');
   return remoteManager().call(device, op, params);
+}
+async function checkRemoteDevice(device, force = false) {
+  try {
+    const info = await remoteManager().check(device, force);
+    verifyRemoteIdentity(device, info);
+    return info;
+  } catch (e) {
+    // Validation failures (missing tools or a different identity) are offline too.
+    // Keep transport failures' normal retry delay so background polls cannot hammer SSH.
+    if (remoteStatuses[device.id]?.status === 'connected') remoteManager().disconnect(device, e.message);
+    throw e;
+  }
 }
 
 const creatingRemote = new Set();
@@ -270,6 +281,7 @@ async function createRemoteSession(opts) {
     const { project, device } = remoteProject(opts.cwd);
     const handle = UUID.test(opts.runtimeId) ? opts.runtimeId : crypto.randomUUID();
     const runtime = await remoteCall(opts.cwd, 'prepare', { ...opts, handle });
+    if (device.enabled === false) throw Error('Connection is off. Turn it on in Settings > Connections.');
     if (sessions.has(opts.id)) return { ok: false, error: 'Session already attached' };
     if ([...sessions.values()].some((s) => s.remoteId && s.runtimeId === runtime.handle)) throw Error('That remote session is already attached in another tab');
     const launch = remoteManager().attach(device, runtime.handle);
@@ -2029,12 +2041,31 @@ function registerIpc() {
   ipcMain.handle('remote:add', async (_e, value) => {
     try {
       const endpoint = remoteTarget(value?.target, value?.port);
-      const device = { ...endpoint, id: crypto.randomUUID(), name: String(value.name || value.target).slice(0, 80) };
-      const info = await remoteManager().check(device);
+      const device = { ...endpoint, id: crypto.randomUUID(), name: deviceName(value.name || value.target), enabled: true };
+      const info = await checkRemoteDevice(device);
       Object.assign(device, { home: info.home, user: info.user, hostname: info.hostname });
       state.remotes.push(device); saveState();
       return { ok: true, remotes: state.remotes, device, info };
     } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('remote:update', async (_e, id, value) => {
+    try {
+      const d = state.remotes.find((d) => d.id === id);
+      if (!d) throw Error('Remote device not found');
+      if (value?.name !== undefined) d.name = deviceName(value.name);
+      if (typeof value?.enabled === 'boolean') {
+        d.enabled = value.enabled;
+        saveState(); // persist off before stopping SSH so polling cannot reconnect it
+        if (!d.enabled) {
+          remoteManager().disconnect(d);
+          for (const s of sessions.values()) if (s.remoteId === id) endSession(s);
+        } else {
+          await checkRemoteDevice(d, true);
+        }
+      }
+      saveState();
+      return { ok: true, remotes: state.remotes, remoteStatuses };
+    } catch (e) { return { ok: false, error: e.message, remotes: state.remotes, remoteStatuses }; }
   });
   ipcMain.handle('remote:dirs', async (_e, id, folder) => {
     try {
@@ -2064,8 +2095,8 @@ function registerIpc() {
     try {
       const d = state.remotes.find((d) => d.id === id);
       if (!d) throw Error('Remote device not found');
-      await remoteManager().check(d, true);
-      return { ok: true };
+      const info = await checkRemoteDevice(d, true);
+      return { ok: true, info };
     } catch (e) { return { ok: false, error: e.message }; }
   });
   ipcMain.handle('remote:runtime', async (_e, key, handle, action) => {
