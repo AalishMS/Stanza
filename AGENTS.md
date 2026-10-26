@@ -157,6 +157,9 @@ site/            the product page (static, open index.html or serve the folder; 
     Local commands wait for `shellEnvReady` on Mac. No shell interpolation or hidden authentication prompts.
     Test Finder-launched HTTPS/SSH clones, GitHub listing/login errors, destination selection, existing-folder errors,
     remote destination browsing, switching between selection/link input and all four themes on Mac.
+    Clone destination browsers share Add project's New folder toolbar and inline Create/Cancel recipe, using
+    `remoteMkdir` with the last browsed directory. Enter creates the child without submitting the clone form;
+    success browses/selects it. Test creation, Cancel, invalid/duplicate names and focus in both clone dialogs on Mac.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
     `shellEnvReady`: the login shell's PATH, since Finder launches get a bare PATH. Capped at 5 s because rc files can
     block (stdin closed, own process group, SIGKILLed on timeout); common folders (Homebrew, `~/.local/bin`) are appended.

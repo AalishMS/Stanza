@@ -4371,7 +4371,14 @@ function showCloneProject(id, kind) {
   const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Clone and add project');
   const back = h('button', { class: 'btn outline', type: 'button', onclick: () => showProjectPicker(id) }, 'Back');
   const folders = h('div', { class: 'remote-entries', 'aria-label': 'Destination folders' });
-  const browser = h('div', { class: 'remote-browser', hidden: true }, folders);
+  const createName = h('input', { id: 'clone-new-folder', placeholder: 'Folder name', 'aria-label': 'Destination child folder name', autocomplete: 'off' });
+  const createButton = h('button', { class: 'btn outline sm', type: 'button', onclick: createDestinationFolder }, 'Create');
+  const createRow = h('div', { class: 'remote-create-row', hidden: true }, createName, createButton,
+    h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { createRow.hidden = true; newFolder.focus(); } }, 'Cancel'));
+  const newFolder = h('button', { class: 'btn ghost sm', id: 'clone-new-folder-button', type: 'button', disabled: true,
+    onclick: () => { createRow.hidden = false; createName.value = ''; createName.focus(); } }, ico('folderPlus'), 'New folder');
+  const browser = h('div', { class: 'remote-browser', hidden: true },
+    h('div', { class: 'remote-folder-toolbar' }, newFolder), createRow, folders);
   const choose = h('button', { class: 'btn outline sm', type: 'button', onclick: async () => {
     if (id) { browser.hidden = false; await browse(parent.value); }
     else {
@@ -4383,6 +4390,8 @@ function showCloneProject(id, kind) {
     h('div', { class: 'rnote' }, `Clone on ${device?.name || 'This computer'}.`));
   let generation = 0;
   let busy = false;
+  let creatingFolder = false;
+  let currentFolder = null;
   let suggested = '';
   let listing = 0;
   let selectedRepo = '';
@@ -4395,18 +4404,42 @@ function showCloneProject(id, kind) {
     suggested = next;
   }
   source.oninput = () => { selectedRepo = ''; source.required = true; renderRepos(); suggestName(); };
+  createName.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); createDestinationFolder(); } };
+  async function createDestinationFolder() {
+    if (!id || !currentFolder || busy || creatingFolder) return;
+    const g = generation;
+    const folder = currentFolder;
+    creatingFolder = true;
+    const controls = [...body.querySelectorAll('input, button')];
+    const disabled = controls.map((c) => c.disabled);
+    controls.forEach((c) => { c.disabled = true; });
+    note.textContent = 'Creating folder…';
+    let result;
+    try { result = await api.remoteMkdir(id, folder, createName.value.trim()); }
+    catch (e) { result = { ok: false, error: e.message }; }
+    if (!dlg.isOpen()) return;
+    creatingFolder = false;
+    controls.forEach((c, i) => { c.disabled = disabled[i]; });
+    renderRepos();
+    if (g !== generation) return;
+    if (!result.ok) { note.textContent = result.error; createName.focus(); return; }
+    createRow.hidden = true;
+    await browse(result.path); parent.focus();
+  }
   async function browse(value) {
     const g = ++generation;
+    currentFolder = null; newFolder.disabled = true; createRow.hidden = true;
     note.textContent = 'Loading folders…';
     const result = await api.remoteDirs(id, value);
     if (!dlg.isOpen() || g !== generation || busy) return;
     if (!result.ok) { note.textContent = result.error; return; }
+    currentFolder = result.path; newFolder.disabled = false;
     parent.value = result.path; note.textContent = '';
     folders.replaceChildren(
       h('button', { class: 'remote-entry', type: 'button', onclick: () => browse(result.parent) }, ico('arrowUp'), '..'),
       ...result.entries.map((n) => h('button', { class: 'remote-entry', type: 'button', onclick: () => browse(`${result.path.replace(/\/$/, '')}/${n}`) }, ico('folder'), n)));
   }
-  parent.oninput = () => { generation++; browser.hidden = true; };
+  parent.oninput = () => { generation++; currentFolder = null; newFolder.disabled = true; browser.hidden = true; };
   if (github) {
     const filter = h('input', { 'aria-label': 'Search your repositories', placeholder: 'Search your repositories…', type: 'search' });
     const repos = h('div', { class: 'remote-entries clone-repositories', 'aria-label': 'Your Repositories' });
@@ -4417,7 +4450,7 @@ function showCloneProject(id, kind) {
       if (!loaded) return;
       const visible = rows.filter((r) => r.name.toLowerCase().includes(filter.value.toLowerCase()));
       repos.replaceChildren(...visible.map((r) => h('button', { class: `remote-entry clone-repository${r.name === selectedRepo ? ' selected' : ''}`,
-        type: 'button', disabled: busy, title: r.name, 'aria-pressed': String(r.name === selectedRepo),
+        type: 'button', disabled: busy || creatingFolder, title: r.name, 'aria-pressed': String(r.name === selectedRepo),
         onclick: () => { selectedRepo = r.name; source.value = ''; source.required = false; suggestName(r.name); renderRepos(); name.focus(); }
       }, ico('code'), h('span', { class: 'clone-repository-name' }, r.name), r.name === selectedRepo ? ico('check') : null)));
       if (!visible.length) repos.append(h('div', { class: 'clone-empty rnote' }, rows.length ? 'No matching repositories.' : 'No repositories found. Paste a link below.'));
@@ -4447,7 +4480,7 @@ function showCloneProject(id, kind) {
     h('div', { class: 'remote-actions' }, back, submit));
   body.onsubmit = async (e) => {
     e.preventDefault();
-    if (busy) return;
+    if (busy || creatingFolder) return;
     busy = true; generation++;
     const controls = [...body.querySelectorAll('input, button')];
     const disabled = controls.map((c) => c.disabled);

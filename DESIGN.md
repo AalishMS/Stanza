@@ -139,7 +139,8 @@ Settings > Connections manages their names and on/off state.
 Below the device selector, outline Git URL and GitHub repository actions open a clone dialog on that device.
 The clone dialog uses the same inputs, flat 32 px repository/folder rows and right-aligned actions: Back and
 primary Clone and add project. Local destinations use a native folder picker; remote destinations use a path
-and Browse folder list. GitHub has two source sections: **Your Repositories:** (search and a flat list capped at
+and Browse folder list, with the same New folder toolbar and inline Create/Cancel controls as Add project.
+Creating a child folder selects it as the clone destination. GitHub has two source sections: **Your Repositories:** (search and a flat list capped at
 192 px, selected row on `--accent` with a checkmark) and **Any Other Repository Link:** (one URL input below a
 `--border` divider). Selecting a row clears the link; entering a link clears the selection. There is no owner/Load
 control or duplicate source field. Progress and errors stay in plain status text; controls disable while cloning.

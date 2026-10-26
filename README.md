@@ -81,6 +81,7 @@ After selecting a device in **Add project**, you can also choose **Git URL** to 
 or **GitHub repository** to browse repositories using that device's GitHub CLI login (`gh auth login`).
 Under **Your Repositories:**, search and select one of your account's first 100 repositories, or paste an HTTPS/SSH
 URL under **Any Other Repository Link:**. Choose a destination folder and a new folder name, then **Clone and add project**.
+On a server, **Browse** also offers **New folder** with inline Create/Cancel controls; creating a folder selects it as the destination.
 Git and, for GitHub, `gh` must be installed on the selected device. Existing folders are never overwritten.
 Authenticate Git/SSH in that device's terminal first; Stanza does not show hidden login prompts.
 
@@ -163,7 +164,8 @@ npm run shortcut    # Desktop and Start menu shortcuts
 
 Git URL and GitHub repository cloning use your login shell's PATH, including Homebrew Git/`gh` when opened
 from Finder. Test local and remote cloning, selecting a repository versus pasting a link, GitHub listing and login errors, destination selection and existing-folder
-errors in all four themes. These Mac checks remain untested here.
+errors in all four themes. In both clone dialogs, check Browse > New folder, Enter to create, Cancel, and duplicate/invalid-name errors.
+These Mac checks remain untested here.
 
 Remote Ubuntu projects use macOS's `/usr/bin/ssh` and the same Cmd shortcuts as local projects.
 Test from a Finder-launched build with your SSH agent/Keychain available: add and rename a device
