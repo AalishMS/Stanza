@@ -139,7 +139,8 @@ site/            the product page (static, open index.html or serve the folder; 
     All keys use the existing shortcut registry; remote shells are labelled Shell on both desktops.
     Untested on Mac: Finder launch with SSH agent/Keychain, Cmd/Option keys, fullscreen CLI mouse,
     resize, detach/reconnect after sleep, explicit End, local polling during remote failure, and all four themes.
-    Add-project device selection uses a themed native popover (Arrow keys/Enter/Escape); New folder creates
+    Add-project device selection uses a themed native popover with `popovertarget` toggling (repeated clicks,
+    Arrow keys/Enter/Escape); New folder creates
     one validated child directory via the Ubuntu helper. These share the Windows path; test keyboard
     focus and folder creation on Mac too. Device rename/remove actions and their IPC are absent.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for

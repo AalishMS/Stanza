@@ -151,7 +151,7 @@ npm run shortcut    # Desktop and Start menu shortcuts
 
 Remote Ubuntu projects use macOS's `/usr/bin/ssh` and the same Cmd shortcuts as local projects.
 Test from a Finder-launched build with your SSH agent/Keychain available: add a remote folder,
-create a child folder, use the device menu's arrow keys and Escape, open Shell/Claude, use
+create a child folder, toggle the device menu with repeated clicks and use its arrow keys and Escape, open Shell/Claude, use
 Option keys and mouse input, resize a mixed split, sleep/reconnect,
 close/reopen a remote tab, explicitly End it, and confirm local Git stays responsive while
 the server is offline. Remote support has been exercised on Windows; these Mac checks remain

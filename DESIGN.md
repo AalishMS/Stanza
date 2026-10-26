@@ -129,7 +129,8 @@ Class names are short and composable. These recipes mirror shadcn's components.
 Add project uses the existing dialog recipe, up to 520 px wide, with a themed device menu:
 This computer, saved remotes, Add remote. Its outline trigger shows an icon, label and chevron;
 the menu uses the DropdownMenu recipe with a checkmark on the current device, arrow-key
-navigation and Escape to close the menu before the dialog. Local selection keeps the native folder picker.
+navigation and Escape to close the menu before the dialog. Its native popover invoker toggles
+the menu on repeated trigger clicks. Local selection keeps the native folder picker.
 Remote selection shows an optional project name, a path field with Go, a flat scrollable list
 of 32 px folder rows and a primary Add project button. A New folder ghost button in the folder
 browser's toolbar reveals an inline name field with Create/Cancel. Creating opens that new

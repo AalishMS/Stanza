@@ -4089,7 +4089,8 @@ async function addProjects() {
 
 function projectDevicePicker(selected) {
   const trigger = h('button', { id: 'project-device', class: 'btn outline remote-device-trigger', type: 'button',
-    'aria-label': 'Device', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': 'project-device-menu' });
+    'aria-label': 'Device', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': 'project-device-menu',
+    popovertarget: 'project-device-menu', popovertargetaction: 'toggle' });
   const menu = h('div', { id: 'project-device-menu', class: 'remote-device-menu', popover: 'auto', role: 'menu', 'aria-label': 'Device' });
   trigger.value = selected;
   const choices = [{ id: '', name: 'This computer', icon: 'folder' }, ...remotes.map((d) => ({ ...d, icon: 'server' }))];
@@ -4103,18 +4104,25 @@ function projectDevicePicker(selected) {
     h('div', { class: 'menu-sep', role: 'separator' }), h('button', { class: 'menu-item', type: 'button', role: 'menuitem', tabindex: '-1',
       onclick: () => { menu.hidePopover(); trigger.value = ':add'; trigger.dispatchEvent(new Event('change')); } }, ico('plus'), 'Add remote…'));
   }
-  function open() {
+  function position() {
     const rect = trigger.getBoundingClientRect();
     menu.style.width = `${Math.min(rect.width, innerWidth - 16)}px`;
     menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - rect.width - 8))}px`;
     menu.style.top = `${rect.bottom + 4}px`;
-    menu.showPopover();
+  }
+  function focusMenu() {
+    const rect = trigger.getBoundingClientRect();
     if (menu.getBoundingClientRect().bottom > innerHeight - 8) menu.style.top = `${Math.max(8, rect.top - menu.offsetHeight - 4)}px`;
     menu.querySelector('[aria-checked="true"]').focus();
   }
-  trigger.onclick = () => menu.matches(':popover-open') ? menu.hidePopover() : open();
-  trigger.onkeydown = (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(); } };
-  menu.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(menu.matches(':popover-open'))));
+  // Let the native invoker toggle: auto-popover light dismissal runs before click handlers.
+  trigger.onkeydown = (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); menu.showPopover(); focusMenu(); } };
+  menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') position(); });
+  menu.addEventListener('toggle', () => {
+    const open = menu.matches(':popover-open');
+    trigger.setAttribute('aria-expanded', String(open));
+    if (open) focusMenu();
+  });
   menu.onkeydown = (e) => {
     if (e.key === 'Tab') { menu.hidePopover(); return; }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
