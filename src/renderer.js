@@ -2015,6 +2015,36 @@ function gitSubLine(info) {
 
 let lastSidebarKey = '';
 let sessionsVer = 0; // bumped when sessionsBy changes, so the render key stays cheap
+let sidebarProjectOrder = '';
+let sidebarProjectQuery = '';
+let projectMoveUntil = 0;
+
+/** FLIP whole project groups; a status redraw continues from their current visual positions, with the same deadline. */
+function replaceProjectGroups(root, groups) {
+  const order = JSON.stringify(groups.map((el) => el.dataset.project).filter(Boolean));
+  const now = performance.now();
+  const canMove = !query && !sidebarProjectQuery && !document.hidden && !reducedMotion.matches
+    && root.checkVisibility({ visibilityProperty: true });
+  if (!canMove) projectMoveUntil = 0;
+  else if (sidebarProjectOrder && order !== sidebarProjectOrder) projectMoveUntil = now + 280;
+  const before = projectMoveUntil > now ? new Map([...root.children].filter((el) => el.dataset.project)
+    .map((el) => [el.dataset.project, el.getBoundingClientRect().top])) : null;
+  sidebarProjectOrder = order;
+  sidebarProjectQuery = query;
+  root.replaceChildren(...groups);
+  if (!before?.size) return;
+  // Read all destination positions before applying transforms, so the browser lays out the new list just once.
+  const moves = [...root.children].map((el) => [el, before.get(el.dataset.project) - el.getBoundingClientRect().top]);
+  for (const [el, dy] of moves) {
+    if (!Number.isFinite(dy) || Math.abs(dy) < 1) continue;
+    el.classList.add('project-moving');
+    el.style.zIndex = dy > 0 ? '1' : '0'; // the rising project passes over the groups making room for it
+    el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], {
+      duration: Math.max(1, projectMoveUntil - performance.now()), easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    }).finished.then(() => { el.classList.remove('project-moving'); el.style.zIndex = ''; }).catch(() => {});
+  }
+}
+
 function renderSidebar(force = false) {
   if (dragSrc || projDrag) return; // rebuilding rows mid-drag would drop the dragged element; the drag's end re-renders
   syncHome();
@@ -2031,7 +2061,7 @@ function renderSidebar(force = false) {
   const emptyNote = () => h('div', { class: 'empty-note' }, 'No projects yet.', h('br'), 'Add a folder to start a Claude session in it.');
   const orphans = orphanProjects(); // every open tab needs a row (there is no tab strip)
   if (!projects.length && !orphans.length) {
-    root.replaceChildren(emptyNote());
+    replaceProjectGroups(root, [emptyNote()]);
     return;
   }
   const q = query.trim().toLowerCase();
@@ -2084,7 +2114,7 @@ function renderSidebar(force = false) {
           ? h('div', { class: 's-more', onclick: () => { showMore.delete(p.path); renderSidebar(true); } }, 'Show less')
           : null);
     }
-    return h('div', { class: 'group' },
+    return h('div', { class: 'group', 'data-project': p.path },
       projectRow(p, isActive, isOpen, orphan),
       isActive && git[p.path] ? gitSubLine(git[p.path]) : null,
       list);
@@ -2092,8 +2122,8 @@ function renderSidebar(force = false) {
   const mixed = splits.filter((g) => homeOf.has(g) && !homeOf.get(g));
   groups.unshift(...mixed.map((g) => h('div', { class: 'group' }, splitGroup(g, true))));
   if (!q && !realProjects().length) groups.push(emptyNote()); // only Chats so far
-  root.replaceChildren(...(groups.length ? groups
-    : [h('div', { class: 'empty-note' }, `No sessions match "${query.trim()}"`)]));
+  replaceProjectGroups(root, groups.length ? groups
+    : [h('div', { class: 'empty-note' }, `No sessions match "${query.trim()}"`)]);
 }
 
 /** One line: chevron, folder icon, name, and a running dot (swapped for + and … on hover). */

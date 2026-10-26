@@ -174,6 +174,8 @@ site/            the product page (static, open index.html or serve the folder; 
     a session moves its group below pinned Chats (`touchProject`, `projectToFront`); the existing reorder IPC saves it.
     Test add, Cmd+T, switching sessions, restart and all four themes on Mac; restore, close-pane focus and reconnect must
     keep the saved order.
+    Reordering animates whole groups with the shared Web Animations API (280 ms, no platform branch). On Mac also
+    test rapid switching, status redraws mid-slide, scrolling, all four themes and Reduce motion; terminal focus stays put.
   - Restored tabs: no Mac branch needed (same transcript paths; `samePath` lowercases, which is fine for the default
     case-insensitive APFS). Claude tabs still wait for `shellEnvReady` like any new tab.
   - Live session (`liveSessions`): first looks up the pty pid in `~/.claude/sessions`. If a launcher keeps Claude in a
@@ -546,8 +548,11 @@ site/            the product page (static, open index.html or serve the folder; 
   Restore and focus handed to a neighbour after close/removal pass `touch: false`; polling, output and reconnect never
   touch order. Removed projects stay at the bottom as orphans. Dragging project rows (`projDragProps`, `projDrag` pauses
   `renderSidebar` like a session drag) or "Move to top" still adjusts the order until next use (`moveProject`). Both paths
-  save through `saveProjectOrder` -> `projects:reorder`, without applying stale IPC replies. Same-name folders:
-  `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,
+  save through `saveProjectOrder` -> `projects:reorder`, without applying stale IPC replies.
+  `replaceProjectGroups` animates keyed `data-project` groups from their prior visual positions (FLIP, 280 ms).
+  Redraws continue toward the same deadline; a new order starts there. Hidden/reduced-motion/search renders snap;
+  initial render has no previous groups to animate. Only moving groups get an opaque `--sidebar` background.
+  Same-name folders: `projParent(p)` = the fewest parent folders that tell it apart, `projName(p)` = `app (clients)` for tab labels,
   notifications and split-group rows; the project row shows the parent as a muted `.p-parent`.
   "Remove from list" keeps the project's tabs open: `orphanProjects()` (tab projects no longer in `projects`) are drawn at
   the bottom of the sidebar, always open, listing only their open tabs (no drag, no actions, `.project.orphan`), and polled

@@ -258,6 +258,10 @@ background output), `--primary` pulsing needs attention (bell, or exited in the 
   PowerShell, show in Explorer, move to top, remove). When another project has the same folder name, the name is
   followed by its parent folder(s) in 11 px `--faint` (`.p-parent`). Adding a local or remote project, starting/restarting
   a session, or deliberately focusing one moves its whole project group first, below Chats; the order survives restart.
+  Reordering slides the folder and its sessions together over 280 ms (`cubic-bezier(0.22, 1, 0.36, 1)`), with the
+  displaced groups making room. Status redraws continue from the current visual positions without extending the finish
+  time; rapid switches start from there too. No movement on initial render, search/filter changes, while hidden, or
+  with reduced motion. Moving groups briefly paint `--sidebar` behind their text so crossing rows stay readable.
   Restore, automatic focus after closing/removing a pane, background output, polling and reconnect do not move projects.
   Project rows can still drag to adjust the order until the next use: a 2 px inset
   `--primary` line (`.drop-before` / `.drop-after`) shows where the row lands. Path and git info live in the tooltip; the **active** project adds one

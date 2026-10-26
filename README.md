@@ -197,7 +197,9 @@ Things that differ on a Mac:
 
 Project recency uses the same code on both desktops: adding a local/remote project or starting/switching sessions
 moves its group below pinned Chats and saves the order. On a Mac, check adding projects, `⌘T`, switching sessions,
-and all four themes. Restart, closing a pane and reconnecting should preserve the order until you use another project.
+and all four themes. Groups slide together when reordered; check rapid switching and scrolling, and that macOS
+Reduce motion makes the order change instantly. Restart, closing a pane and reconnecting should preserve the order
+until you use another project.
 
 The home screen's design came from the standalone proposals in [mockups/home](mockups/home/README.md) (the
 "Workbench" one). Open its `index.html` in Safari or Chrome to compare the layouts; they use sample data.
