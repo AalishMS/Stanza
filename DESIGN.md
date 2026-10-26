@@ -124,6 +124,25 @@ Class names are short and composable. These recipes mirror shadcn's components.
 - `.on` = toggled state (bg `--accent`, `--foreground`).
 - **No pill buttons.** Pills were the old design. One exception: the right sidebar's tab pill (see "Tab pill").
 
+### Remote projects
+
+Add project uses the existing dialog recipe, up to 520 px wide, with a native device selector:
+This computer, saved remotes, Add remote. Local selection keeps the native folder picker.
+Remote selection shows an optional project name, a path field with Go, a flat scrollable list
+of 32 px folder rows and a primary Add project button. Inputs follow the Input recipe; all
+surfaces use the four existing palettes. The close button stays at the dialog's right edge.
+
+A remote project row uses a server outline icon, the usual truncated project name, then a
+separate 11 px faint device label (up to 72 px) and a 6 px connection dot: success = connected,
+warning = connecting, faint = offline. The tooltip explains the state/error. Its session rows
+retain the normal working/attention dots; the project does not show a second running dot.
+Status-bar paths read `device · /absolute/remote/path`. Remote shell labels are Shell on both
+desktops. Closing a remote tab says it keeps the process running; End is an explicit action.
+
+The remote right sidebar explains which features are available, with no local MCP/agent/server
+data substituted. Changes retains its existing layout but has no local Open in VS Code action.
+File upload and clipboard-image attempts explain that remote upload is not available yet.
+
 ### No tab strip
 There is no horizontal tab strip: the sidebar's session rows are the tabs. Every open tab has a row (a transcript
 row, a "New session" placeholder until the first reply, or a "PowerShell" row). `Ctrl+Tab`, `Alt+1..9` and

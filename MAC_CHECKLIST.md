@@ -16,6 +16,18 @@ everything that needs checking there. Tick what works. For anything that fails, 
 - [ ] If `node_modules/electron/dist` is missing after `npm install`, run `node node_modules/electron/install.js`.
 - [ ] `npm start` opens the app. Add a project folder with the folder-plus button at the bottom of the sidebar.
 
+## Remote Ubuntu projects
+
+- [ ] From a Finder-launched build, Add project → Add remote connects with `/usr/bin/ssh` and existing agent/Keychain.
+- [ ] Remote folder rows and POSIX paths render correctly, including spaces/Unicode; device labels stay readable.
+- [ ] Shell and Claude input, Cmd shortcuts, Option shortcuts, mouse and split resizing work.
+- [ ] Closing a remote tab leaves work running; reopening the history/runtime row attaches to the same process.
+- [ ] Sleep/network loss reconnects without replaying typed input; local Git/session polling stays responsive.
+- [ ] End remote session stops only its owned runtime; permission relaunch waits for its old process to exit.
+- [ ] Cmd+Q and packaged update detach remote sessions; local quit behavior stays as before.
+- [ ] Remote file drops/image paste report unsupported; no local file/editor/MCP data appears for a remote project.
+- [ ] Device setup/picker/sidebar/Changes look right in dark, light and both Claude palettes.
+
 ## Basics
 
 - [ ] The window buttons (red/yellow/green) sit neatly at the top left and don't overlap the logo, with the sidebar

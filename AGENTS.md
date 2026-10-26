@@ -6,7 +6,7 @@ Each tab is a genuine Claude Code session, so never re-implement CLI features (s
 model switching). The app only adds what the terminal lacks: a project sidebar, tabs, live git status per
 project, and a running-servers panel.
 
-Personal tool for one user on Windows 11, also run on macOS by a friend (never tested here). No Linux, no telemetry,
+Personal tool for one user on Windows 11, also run on macOS by a friend (never tested here). No Linux desktop build (Ubuntu SSH remotes are supported), no telemetry,
 no auto-update (only a manual Update button for git clones, see "Update").
 
 **Every change must work on both Windows and macOS.** Any new feature or fix that touches processes, paths, shells,
@@ -76,6 +76,8 @@ tokens and component recipes, never installed (no React/Tailwind/Radix).
 ```
 src/main.js      window, ptys, git status, port scan, persistence, IPC handlers
 src/preload.js   window.api bridge (contextIsolation on, sandbox on, no nodeIntegration)
+src/remote.js    desktop OpenSSH connection/helper lifecycle; src/remote/bridge.js runs on Ubuntu over stdin/stdout
+src/lib/remote.js pure remote identity, target validation and POSIX quoting; remote/tmux.conf isolates CLI keys
 src/renderer.js  all UI: tabs (as sidebar rows), sidebar, servers panel, status bar, dialogs, polling
 src/lib/parse.js pure parsers for main (git, netstat, lsof/ps, transcripts, mcp list, split remap); no Electron, no fs
 src/lib/images.js  transcript image index (scanImages) for main, plus the .md files a session wrote (`docs`); fs only
@@ -132,6 +134,11 @@ site/            the product page (static, open index.html or serve the folder; 
   restored tabs come back with normal permissions. Session rows show a `…` (`.s-menu`) on hover that opens the same menu.
 - **macOS** (`IS_MAC` in main.js, `IS_MAC`/`mod(e)`/`kbd()` in renderer.js; `api.platform` from preload). Windows code
   stays as is; Mac branches sit next to it and fail soft.
+  - Remote projects: use `/usr/bin/ssh` (Windows: `ssh.exe`) through the existing node-pty terminal;
+    helper calls use OpenSSH stdin/stdout. The Ubuntu helper needs Node 20+, tmux and util-linux's flock, never Electron.
+    All keys use the existing shortcut registry; remote shells are labelled Shell on both desktops.
+    Untested on Mac: Finder launch with SSH agent/Keychain, Cmd/Option keys, fullscreen CLI mouse,
+    resize, detach/reconnect after sleep, explicit End, local polling during remote failure, and all four themes.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
     `shellEnvReady`: the login shell's PATH, since Finder launches get a bare PATH. Capped at 5 s because rc files can
     block (stdin closed, own process group, SIGKILLed on timeout); common folders (Homebrew, `~/.local/bin`) are appended.
@@ -531,6 +538,19 @@ site/            the product page (static, open index.html or serve the folder; 
 
 ## Gotchas (learned the hard way)
 
+- **Remote identity and lifecycle**: remote project `path` is an opaque `ssh://<device-id>/<encoded POSIX path>`
+  key, with `remotePath` holding the real Ubuntu path and `remoteId` the saved endpoint. Local paths/state stay
+  compatible. Never feed these keys to local fs/path/shell operations. Display labels use `displayPath()`.
+  `state.remoteClient` owns an isolated `stanza-<uuid>` tmux socket; runtime handles differ from transcript UUIDs.
+  Closing a remote tab or quitting detaches; explicit End/relaunch terminates and confirms remote process exit.
+  Never turn all `ptyKill` calls into remote termination or interpret an SSH exit as a Claude exit.
+  `remoteGeneration` guards live-session replies across relaunch. Shared flock reservations refuse concurrent
+  resume across clients; live records must be interactive and no older than the runtime. The helper drains
+  in-flight tasks on SSH EOF so startup either records metadata or rolls back. Local/remote polling is independent.
+  Deferred remote surfaces (docs/images/uploads/editor/MCP/agents/ports) are guarded, never given local data.
+  Native OpenSSH keeps host-key checks and existing config/keys; setup writes only a versioned Node bundle under
+  `~/.local/share/stanza/remote/`. No credentials are copied. Target/account changes get a new device identity.
+
 - **Resize a terminal once, and only when its size changes** (`fitTab`). The renderer rounds the cell height, so the fit
   addon's row count can be one too many; `fit.fit()` followed by `rows - 1` resized every tab twice per switch, and each
   pty resize makes Claude repaint its screen (the Ctrl+Tab jitter). `fitTab` computes the final size from
@@ -620,6 +640,11 @@ Then use the Chrome DevTools Protocol (Node 22+ has a built-in `WebSocket`) to e
 `Page.captureScreenshot`. Renderer functions are globals (`openSession`, `pollPorts`, `tabs`, `projects`...), so
 scripts can open sessions, write to ptys (`api.ptyWrite`), and read xterm buffers. Seed projects by writing
 `state.json` in the profile dir (no BOM issues now, but keep it plain). Look at screenshots for any UI change.
+
+**Remote integration** (opt-in, not run by `node --test`): `node scripts/remote-smoke.js user@host` installs the
+helper, creates its own tmux socket and `/tmp/stanza-smoke-<uuid>` Git folder, and exercises shell input,
+resize, Git/diff, detach/reattach, conflicting attachment refusal and termination. Uses no existing transcripts.
+Signed-in Claude fullscreen, `/clear`, `/resume` and real fork behavior still need a server with Claude logged in.
 
 ## Ideas not built yet
 

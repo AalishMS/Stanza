@@ -204,6 +204,10 @@ const tip = (label, id) => (keyText(id) ? `${label} (${keyText(id)})` : label);
 // --------------------------------------------------------------- state ----
 
 let projects = [];
+let remotes = [];
+let remoteStatuses = {};
+const remoteName = (p) => remotes.find((d) => d.id === p?.remoteId)?.name || 'Remote';
+const displayPath = (p) => p?.remoteId ? `${remoteName(p)} · ${p.remotePath}` : p?.path || '';
 let ui = { sidebar: true, servers: true, fontSize: 14, zoom: 1, theme: 'dark', accent: 'blue', collapsed: [] }; // replaced by the saved state in init()
 const tabs = new Map(); // id -> tab
 let activeId = null;
@@ -494,7 +498,7 @@ function orphanProjects() {
 }
 
 /** The parent folders that tell a project apart from others of the same folder name ("clients" for C:\code\clients\app), else ''. */
-const projParent = (p) => (p.chat ? '' : distinctParent(p, realProjects()));
+const projParent = (p) => (p.remoteId ? remoteName(p) : p.chat ? '' : distinctParent(p, realProjects().filter((x) => !x.remoteId)));
 /** A project's name for labels and notifications: "app (clients)" when another project is also called "app". */
 const projName = (p) => { const up = projParent(p); return up ? `${p.name} (${up})` : p.name; };
 
@@ -568,8 +572,8 @@ function tabLabel(tab) {
   return same.length > 1 ? `${projName(tab.project)} ${n}` : projName(tab.project);
 }
 
-async function openSession(project, { kind = 'claude', resumeId = null, fork = false, skipPerms = false, beside = false, below = false, at } = {}) {
-  const tab = createTab(project, { kind, resumeId, fork });
+async function openSession(project, { kind = 'claude', resumeId = null, runtimeId = null, fork = false, skipPerms = false, beside = false, below = false, at } = {}) {
+  const tab = createTab(project, { kind, resumeId, runtimeId, fork });
   tab.skipPerms = skipPerms; // --dangerously-skip-permissions, kept for Restart/Resume (not saved: restored tabs ask again)
   if (beside) addToSplit(tab.id, at, below);
   activate(tab.id);
@@ -579,7 +583,7 @@ async function openSession(project, { kind = 'claude', resumeId = null, fork = f
 }
 
 /** A tab with its terminal, not started and not shown yet. New tabs go first (newest on top); `append` keeps a restored order. */
-function createTab(project, { kind = 'claude', resumeId = null, fork = false, append = false } = {}) {
+function createTab(project, { kind = 'claude', resumeId = null, runtimeId = null, fork = false, append = false } = {}) {
   fork = !!(fork && resumeId); // --fork-session: resumes a copy under a new session id, matched later like a fresh tab
   const id = crypto.randomUUID();
   const head = h('div', { class: 'pane-head' });
@@ -611,7 +615,7 @@ function createTab(project, { kind = 'claude', resumeId = null, fork = false, ap
   term.open(host);
 
   const tab = {
-    id, project, kind, term, fit, host, head, seq: ++tabSeq,
+    id, project, kind, term, fit, host, head, seq: ++tabSeq, runtimeId,
     resumeId, fork, sessionId: fork ? null : resumeId, startedAt: Date.now(), // sessionId of fresh/forked tabs is matched later (assignSessions)
     status: 'starting', exitCode: null, title: '',
     parked: !!resumeId && !fork && !append, // a reopened past session keeps its place until the first prompt (trackTab)
@@ -620,7 +624,7 @@ function createTab(project, { kind = 'claude', resumeId = null, fork = false, ap
   };
   tabs.set(id, tab);
   if (!append && !tab.parked) toFront([id]);
-  term.registerLinkProvider(fileLinks(tab));
+  if (!project.remoteId) term.registerLinkProvider(fileLinks(tab));
   wireTerminal(tab);
   wireScrollbar(tab);
   return tab;
@@ -637,7 +641,7 @@ async function restoreTabs(saved) {
     let tab = null;
     try {
       const project = projects.find((p) => p.path === r.project);
-      if (project) tab = createTab(project, { kind: r.kind, resumeId: r.kind === 'claude' ? r.sessionId : null, append: true });
+      if (project) tab = createTab(project, { kind: r.kind, runtimeId: r.runtimeId, resumeId: r.kind === 'claude' ? r.sessionId : null, append: true });
     } catch { /* skip this one */ }
     bySaved.push(tab);
   }
@@ -652,7 +656,8 @@ async function restoreTabs(saved) {
   const first = bySaved[saved.active] || made[0];
   activate(first.id);
   fitTab(first);
-  await startPty(first);
+  const firstStart = startPty(first);
+  if (!first.project.remoteId) await firstStart;
   // the panes on screen with it start next, then the rest
   const shown = visibleIds();
   for (const t of [...made.filter((x) => shown.includes(x.id)), ...made.filter((x) => !shown.includes(x.id))]) {
@@ -662,7 +667,8 @@ async function restoreTabs(saved) {
     // Hidden terminals can't measure themselves: start at the visible one's size, activate() refits later.
     if (t.host.offsetWidth) fitTab(t);
     else try { t.term.resize(first.term.cols, first.term.rows); } catch { /* keep 80x24 */ }
-    await startPty(t).catch(() => {});
+    if (t.project.remoteId) startPty(t).catch(() => {});
+    else await startPty(t).catch(() => {});
   }
 }
 
@@ -677,12 +683,13 @@ function saveTabs() {
   const list = [...tabs.values()].filter((t) => {
     if (!shown.includes(t.id)) return false;
     if (t.kind === 'shell') return true;
+    if (t.project.remoteId) return !!t.runtimeId || !!t.sessionId;
     if (!t.sessionId || seen.has(t.sessionId)) return false; // a session shown twice (cloneBeside) is reopened once
     seen.add(t.sessionId);
     return true;
   });
   const payload = {
-    tabs: list.map((t) => ({ project: t.project.path, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null })),
+    tabs: list.map((t) => ({ project: t.project.path, kind: t.kind, sessionId: t.kind === 'claude' ? t.sessionId : null, ...(t.project.remoteId ? { runtimeId: t.runtimeId } : {}) })),
     active: list.indexOf(activeTab()),
     // split groups by index into `tabs`; members not saved (no transcript yet) drop out
     splits: splits.map((g) => ({
@@ -697,21 +704,80 @@ function saveTabs() {
 }
 
 async function startPty(tab) {
-  if (!tabs.has(tab.id)) return;
-  const res = await api.ptyCreate({
+  if (!tabs.has(tab.id) || tab.startingPty) return;
+  tab.startingPty = true;
+  let res;
+  try {
+  if (tab.project.remoteId && tab.runtimeId) {
+    const state = await api.remoteRuntime(tab.project.path, tab.runtimeId);
+    if (!state.ok) throw Error(state.error);
+    if (!state.runtime?.alive) {
+      tab.remoteEnded = true; tab.status = 'exited';
+      showOverlay(tab, 'Remote session ended. Resume to start a new process.');
+      return;
+    }
+  }
+  res = await api.ptyCreate({
     id: tab.id, cwd: tab.project.path, kind: tab.kind, resumeId: tab.resumeId, fork: tab.fork, skipPerms: !!tab.skipPerms,
+    runtimeId: tab.runtimeId,
     cols: tab.term.cols, rows: tab.term.rows,
   });
+  } catch (e) { res = { ok: false, error: e.message }; }
+  finally { tab.startingPty = false; }
   if (!tabs.has(tab.id)) { if (res.ok) api.ptyKill(tab.id); return; } // closed while starting
   if (res.ok) {
+    if (tab.project.remoteId) {
+      tab.runtimeId = res.runtimeId; tab.remoteEnded = false; tab.reconnectAttempts = 0;
+      tab.skipPerms = !!res.skipPerms;
+      if (res.sessionId) tab.sessionId = res.sessionId;
+      tab.host.querySelector('.overlay')?.remove();
+      saveTabs();
+    }
     tab.status = 'running';
     tab.exitCode = null;
   } else {
+    if (tab.project.remoteId && tab.runtimeId) { remoteDisconnected(tab, res.error); return; }
     tab.status = 'exited';
     showOverlay(tab, `Could not start: ${res.error}`, true);
   }
   renderSidebar(true);
   renderStatus();
+}
+
+function remoteNotice(message) {
+  return openModal('Remote project', null, h('div', { class: 'ag-body' }, h('p', { class: 'rnote' }, message)));
+}
+
+function remoteDisconnected(tab, message = 'Connection lost. Remote work may still be running.') {
+  if (!tabs.has(tab.id) || tab.remoteEnded) return;
+  tab.status = 'disconnected'; tab.busy = false;
+  tab.host.querySelector('.overlay')?.remove();
+  tab.host.append(h('div', { class: 'overlay' },
+    h('span', { class: 'msg' }, message),
+    h('button', { class: 'btn outline sm', onclick: () => reconnectRemote(tab) }, 'Reconnect'),
+    h('button', { class: 'btn ghost sm', onclick: () => closeTab(tab.id) }, 'Close tab (keep running)')));
+  clearTimeout(tab.reconnectTimer);
+  tab.reconnectTimer = setTimeout(() => reconnectRemote(tab), Math.min(30000, 2000 * 2 ** Math.min(tab.reconnectAttempts || 0, 4)));
+  renderSidebar(true); renderStatus();
+}
+
+async function reconnectRemote(tab) {
+  if (!tabs.has(tab.id) || tab.status === 'running' || tab.startingPty) return;
+  clearTimeout(tab.reconnectTimer);
+  tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
+  await startPty(tab);
+}
+
+async function endRemote(tab) {
+  tab.remoteGeneration = (tab.remoteGeneration || 0) + 1;
+  delete liveBy[tab.id];
+  tab.remoteEnding = true;
+  const r = await api.remoteRuntime(tab.project.path, tab.runtimeId, 'end');
+  tab.remoteEnding = false;
+  if (!r.ok) { remoteNotice(r.error); return false; }
+  tab.remoteEnded = true;
+  clearTimeout(tab.reconnectTimer);
+  return true;
 }
 
 /** A reopened past session stops keeping its place: it joins the open tabs at the front (`front` false: just clear the flag). */
@@ -725,6 +791,7 @@ function wireTerminal(tab) {
   const { term, host } = tab;
 
   term.onData((d) => {
+    if (tab.project.remoteId && (tab.status !== 'running' || tab.remoteEnding)) return;
     if (d.includes('\r')) {
       tab.enters.push(Date.now());
       if (tab.enters.length > 100) tab.enters.shift();
@@ -775,11 +842,17 @@ function wireTerminal(tab) {
     if (term.hasSelection()) copySelection(tab);
     else pasteInto(tab);
   });
+  host.addEventListener('paste', (e) => {
+    if (tab.project.remoteId && [...(e.clipboardData?.items || [])].some((i) => i.kind === 'file')) {
+      e.preventDefault(); e.stopPropagation(); remoteNotice('Clipboard image upload is not available for remote sessions yet.');
+    }
+  }, true);
 
   // Dropping files pastes their paths, which Claude Code understands (including images).
   host.addEventListener('dragover', (e) => e.preventDefault());
   host.addEventListener('drop', (e) => {
     e.preventDefault();
+    if (tab.project.remoteId && e.dataTransfer.files.length) { remoteNotice('File upload is not available for remote sessions yet. Copy files to the server first.'); return; }
     const paths = [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean);
     if (paths.length) term.paste(paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(' ') + ' ');
     term.focus();
@@ -1066,6 +1139,7 @@ function copySelection(tab) {
 async function pasteInto(tab) {
   const text = await api.readClipboard();
   if (text) tab.term.paste(text);
+  else if (tab.project.remoteId) remoteNotice('Clipboard image upload is not available for remote sessions yet.');
   else if (tab.kind === 'claude') api.ptyWrite(tab.id, '\x1bv'); // Alt+V: Claude Code's image paste on Windows
 }
 
@@ -1088,6 +1162,16 @@ function showOverlay(tab, message, isError = false) {
 
 /** `mode`: 'resume' = the tab's current session (`--resume`), 'fresh' = a new session, else the same command as before. */
 async function restartTab(tab, mode) {
+  if (tab.project.remoteId && tab.remoteOperation) return;
+  if (tab.project.remoteId) tab.remoteOperation = true;
+  try {
+  if (tab.project.remoteId) {
+    if (tab.runtimeId && !(await endRemote(tab))) return;
+    const detached = await api.detachPty(tab.id);
+    if (!detached.ok) { remoteNotice(detached.error); return; }
+    if (!tabs.has(tab.id)) return;
+    tab.runtimeId = null; tab.remoteEnded = false;
+  }
   tab.host.querySelector('.overlay')?.remove();
   unpark(tab, false);
   if (mode === 'resume') { tab.resumeId = tab.sessionId; tab.fork = false; }
@@ -1096,10 +1180,11 @@ async function restartTab(tab, mode) {
   tab.status = 'starting';
   const old = tab.sessionId;
   tab.sessionId = tab.fork ? null : tab.resumeId; // a restarted fresh (or forked) tab is a new Claude session
-  if (old && old !== tab.sessionId) retired.add(old);
+  if (!tab.project.remoteId && old && old !== tab.sessionId) retired.add(old);
   tab.startedAt = Date.now();
   await startPty(tab);
-  tab.term.focus();
+  if (tabs.has(tab.id)) tab.term.focus();
+  } finally { if (tab.project.remoteId) tab.remoteOperation = false; }
 }
 
 /**
@@ -1107,22 +1192,36 @@ async function restartTab(tab, mode) {
  * is mid-task; the old process must exit before the new one can take the tab's id.
  */
 async function relaunchTab(tab, skipPerms) {
+  if (tab.project.remoteId && tab.remoteOperation) return;
+  if (tab.project.remoteId) tab.remoteOperation = true;
+  try {
   if (tab.relaunch) return;
   if (isWorking(tab) && !(await confirmDialog({
     title: 'Relaunch this session?', message: 'Claude is working in it; relaunching stops the current task.', okLabel: 'Relaunch',
   }))) return;
   if (!tabs.has(tab.id)) return;
   tab.skipPerms = skipPerms;
+  if (tab.project.remoteId) {
+    if (tab.runtimeId && !(await endRemote(tab))) return;
+    const detached = await api.detachPty(tab.id);
+    if (!detached.ok) { remoteNotice(detached.error); return; }
+    if (!tabs.has(tab.id)) return;
+    tab.runtimeId = null; tab.status = 'exited';
+    tab.remoteOperation = false;
+    return await restartTab(tab, 'resume');
+  }
   if (tab.status === 'running') {
     await new Promise((resolve) => { tab.relaunch = resolve; api.ptyKill(tab.id); });
     delete tab.relaunch;
     if (!tabs.has(tab.id)) return;
   }
   restartTab(tab, 'resume');
+  } finally { if (tab.project.remoteId) tab.remoteOperation = false; }
 }
 
 /** Only asks if closing interrupts something: Claude mid-task or a dev server this tab started. */
 async function confirmClose(tab) {
+  if (tab.project.remoteId) return true; // closing only detaches; ending is an explicit menu action
   if (tab.status !== 'running') return true;
   let scan = ports;
   if (Date.now() - portsAt > 10000) scan = await api.listPorts();
@@ -1152,7 +1251,8 @@ async function closeTab(id) {
     closing.delete(id);
   }
   api.ptyKill(id);
-  if (tab.sessionId) retired.add(tab.sessionId); // no other tab may take its transcript over
+  clearTimeout(tab.reconnectTimer);
+  if (!tab.project.remoteId && tab.sessionId) retired.add(tab.sessionId); // no other local tab may take its transcript over
   clearTimeout(tab.busyTimer);
   tab.term.dispose();
   tab.host.remove();
@@ -1485,8 +1585,8 @@ function wireDropZone() {
     const tab = src.id && tabs.get(src.id);
     if (!activeId) { // home screen: just open it
       if (tab) activate(tab.id);
-      else openSession(src.project, { resumeId: src.resumeId });
-    } else if (!tab) openSession(src.project, { resumeId: src.resumeId, beside: true, at });
+      else openSession(src.project, { kind: src.kind, runtimeId: src.runtimeId, resumeId: src.resumeId });
+    } else if (!tab) openSession(src.project, { kind: src.kind, runtimeId: src.runtimeId, resumeId: src.resumeId, beside: true, at });
     else if (visibleIds().includes(tab.id)) cloneBeside(tab, at);
     else { addToSplit(tab.id, at); activate(tab.id); }
   });
@@ -1607,7 +1707,7 @@ function paneTitle(t) {
   if (known) return known.title;
   if (t.kind === 'shell') {
     const shells = tabsOf(t.project.path).filter((x) => x.kind === 'shell').sort((a, b) => a.seq - b.seq);
-    return `${SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
+    return `${t.project.remoteId ? 'Shell' : SHELL_LABEL}${shells.length > 1 ? ' ' + (shells.indexOf(t) + 1) : ''}`;
   }
   return t.fork ? 'Forked session' : t.resumeId ? 'Resumed session' : 'New session';
 }
@@ -1749,7 +1849,7 @@ function toggleExpand(p) {
   renderSidebar(true);
 }
 
-const tabOfSession = (id) => [...tabs.values()].find((t) => t.sessionId === id);
+const tabOfSession = (id, projectPath) => [...tabs.values()].find((t) => t.sessionId === id && (!projectPath || t.project.path === projectPath));
 
 
 /**
@@ -1769,7 +1869,7 @@ let liveBy = {};
  * for ours.
  */
 function assignSessions() {
-  const claude = [...tabs.values()].filter((t) => t.kind === 'claude');
+  const claude = [...tabs.values()].filter((t) => t.kind === 'claude' && !t.project.remoteId);
   const changes = matchSessions(claude.map((t) => ({
     id: t.id, project: t.project.path, sessionId: t.sessionId, fork: t.fork, running: t.status === 'running',
     working: isWorking(t), startedAt: t.startedAt, enters: t.enters, live: liveBy[t.id] || null,
@@ -1780,14 +1880,20 @@ function assignSessions() {
     if (!c.sessionId) { t.resumeId = null; t.fork = false; } // /new: a "New session" placeholder, not "Resumed session"
     t.sessionId = c.sessionId;
   }
+  for (const t of tabs.values()) {
+    if (!t.project.remoteId || t.kind !== 'claude') continue;
+    const live = liveBy[t.id];
+    if (live && live !== t.sessionId) { t.sessionId = live; t.resumeId = live; t.fork = false; infoBy.delete(t.id); }
+  }
   saveTabs(); // diffed: only writes when a tab just got its transcript
 }
 
 function openSessionRow(project, s) {
-  const open = tabOfSession(s.id);
+  const open = tabsOf(project.path).find((t) => (s.runtimeId && t.runtimeId === s.runtimeId) || t.sessionId === s.id);
   if (open) activate(open.id);
-  else openSession(project, { resumeId: s.id });
+  else openSession(project, sessionOptions(s));
 }
+const sessionOptions = (s) => ({ kind: s.kind || 'claude', runtimeId: s.runtimeId, resumeId: s.runtimeId ? s.transcriptId || null : s.id });
 
 /**
  * "Continue last conversation" = the project's newest transcript (by last message, the sidebar's order), resumed by id
@@ -1810,7 +1916,7 @@ const dotMark = (state) => h('span', { class: 's-mark' }, state ? h('i', { class
 /** Rows backed by an open tab show × in place of their time on hover; middle-click closes too, as on the old tabs. */
 function closeButton(t) {
   return h('button', {
-    class: 'btn ghost icon sm s-close', title: tip('Close', 'closeSession'),
+    class: 'btn ghost icon sm s-close', title: tip(t.project.remoteId ? 'Close tab (keep remote session running)' : 'Close', 'closeSession'),
     onclick: (e) => { e.stopPropagation(); closeTab(t.id); },
   }, ico('x'));
 }
@@ -1824,10 +1930,10 @@ function sessionRow(p, s, t = null, showProject = false) {
   return h('div', {
     class: `session${t ? (t.id === activeId ? ' active' : '') + ' has-tab' : ''}${menuFor === `s:${s.id}` ? ' menu-open' : ''}`,
     'data-tab': t?.id,
-    ...rowDrag({ id: t?.id || null, project: p, resumeId: s.id }),
+    ...rowDrag({ id: t?.id || null, project: p, ...sessionOptions(s) }),
     title: `${s.title}\n${new Date(s.last).toLocaleString()}\nDrag onto the terminal (or ${kbd('Shift+click')}) to open beside the current session\nRight-click (or …) for more`,
     onclick: (e) => (e.shiftKey && activeId
-      ? besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))
+      ? besideRow(t, () => openSession(p, { ...sessionOptions(s), beside: true }))
       : openSessionRow(p, s)),
     oncontextmenu: (e) => { e.preventDefault(); sessionMenu(p, s, t, e); },
     onauxclick: auxClose(t),
@@ -1951,7 +2057,7 @@ function renderSidebar(force = false) {
     if (!orphan) for (const t of mine) if (t.parked && listed?.has(t.sessionId) && !groupOf(t.id)) inPlace.add(t.sessionId);
     const open = q ? [] : mine.filter((t) => !inPlace.has(t.sessionId));
     const openIds = new Set(open.map((t) => t.sessionId));
-    const rest = orphan && !q ? [] : matches.filter((s) => !openIds.has(s.id)); // a removed project lists only its open tabs
+    const rest = orphan && !q ? [] : matches.filter((s) => !openIds.has(s.id) && !open.some((t) => s.runtimeId && s.runtimeId === t.runtimeId)); // detached remote runtimes stay discoverable
     const isActive = p.path === activeProject;
 
     let list = null;
@@ -1963,7 +2069,7 @@ function renderSidebar(force = false) {
       list = h('div', { class: 'sessions' },
         openRows(open, p),
         rest.length
-          ? shown.map((s) => sessionRow(p, s, tabOfSession(s.id)))
+          ? shown.map((s) => sessionRow(p, s, tabOfSession(s.id, p.path)))
           : open.length ? null : h('div', { class: 's-note' }, 'No sessions yet'),
         hidden ? h('div', { class: 's-more', onclick: () => { showMore.add(p.path); renderSidebar(true); } }, `Show ${hidden} more`) : null,
         !q && showMore.has(p.path) && rest.length > room
@@ -1988,8 +2094,8 @@ function projectRow(p, isActive, isOpen, orphan = false) {
   const dots = tabsOf(p.path).map(tabDot);
   const run = ['attention', 'working', 'running'].find((d) => dots.includes(d));
   return h('div', {
-    class: `project${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}${orphan ? ' orphan' : ''}`,
-    title: [p.path, gitSummary(git[p.path]), orphan ? 'Removed from the list: shown while its sessions are open'
+    class: `project${p.remoteId ? ' remote-project' : ''}${isActive && !isOpen ? ' current' : ''}${menuFor === p.path ? ' menu-open' : ''}${orphan ? ' orphan' : ''}`,
+    title: [displayPath(p), gitSummary(git[p.path]), orphan ? 'Removed from the list: shown while its sessions are open'
       : p.chat ? null : 'Drag to reorder'].filter(Boolean).join('\n'),
     onclick: () => { if (!orphan) toggleExpand(p); }, // only collapses/expands; new sessions come from + or the shortcut
     ...(p.chat || orphan ? {} : projDragProps(p)), // Chats stays pinned first
@@ -1998,9 +2104,11 @@ function projectRow(p, isActive, isOpen, orphan = false) {
       class: `chev${isOpen ? ' open' : ''}`, title: orphan ? null : isOpen ? 'Hide sessions' : 'Show sessions',
       onclick: (e) => { e.stopPropagation(); if (!orphan) toggleExpand(p); },
     }, ico('chevron')),
-    h('span', { class: 'p-icon' }, ico(p.chat ? 'chat' : 'folder')),
-    h('span', { class: 'p-name' }, p.name, projParent(p) ? h('span', { class: 'p-parent' }, projParent(p)) : null),
-    h('span', { class: 'p-run', title: run ? 'Something is running' : null }, run ? h('i', { class: `dot ${run}` }) : null),
+    h('span', { class: 'p-icon' }, ico(p.remoteId ? 'server' : p.chat ? 'chat' : 'folder')),
+    h('span', { class: 'p-name' }, p.name, !p.remoteId && projParent(p) ? h('span', { class: 'p-parent' }, projParent(p)) : null),
+    p.remoteId ? h('span', { class: 'p-device', title: remoteName(p) }, remoteName(p)) : null,
+    p.remoteId ? h('span', { class: `remote-dot ${remoteStatuses[p.remoteId]?.status || 'offline'}`, title: remoteStatuses[p.remoteId]?.error || `Server ${remoteStatuses[p.remoteId]?.status || 'not connected'}`, 'aria-label': `Server ${remoteStatuses[p.remoteId]?.status || 'not connected'}` }) : null,
+    h('span', { class: 'p-run', title: run ? 'Something is running' : null }, !p.remoteId && run ? h('i', { class: `dot ${run}` }) : null),
     orphan ? null : h('div', { class: 'p-acts' },
       rowButton('plus', 'New Claude session', () => openSession(p)),
       h('button', {
@@ -2031,7 +2139,7 @@ async function toggleMenu(p, anchor) {
   // CLAUDE.md / README.md open as file tabs, which belong to the project's tabs: offered while one is open (its most
   // recently used one is focused). A quick readdir in main.
   const own = tabsOf(p.path).sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0))[0];
-  const root = own ? (await api.docsList(p.path, null).catch(() => null))?.project || [] : [];
+  const root = own && !p.remoteId ? (await api.docsList(p.path, null).catch(() => null))?.project || [] : [];
   if (!anchor.isConnected) return; // the sidebar was redrawn meanwhile
   const readDoc = (name) => {
     const f = root.find((x) => docName(x).toLowerCase() === name.toLowerCase());
@@ -2041,8 +2149,10 @@ async function toggleMenu(p, anchor) {
   const top = realProjects()[0]; // Chats is pinned above it
   openMenu(p.path, [
     menuItem('redo', 'Continue last conversation', () => continueLast(p)),
-    menuItem('terminal', `Open ${SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
-    menuItem('folder', `Show in ${FILES_APP}`, () => api.openFolder(p.path)),
+    menuItem('terminal', `Open ${p.remoteId ? 'Shell' : SHELL_LABEL} here`, () => openSession(p, { kind: 'shell' })),
+    menuItem('folder', p.remoteId ? 'Copy remote path' : `Show in ${FILES_APP}`, () => p.remoteId ? api.writeClipboard(p.remotePath) : api.openFolder(p.path)),
+    p.remoteId ? menuItem('redo', `Reconnect ${remoteName(p)}`, async () => { const r = await api.remoteDevice(p.remoteId, 'reconnect'); if (!r.ok) remoteNotice(r.error); else { pollGit(); pollSessions(); } }) : null,
+    p.remoteId ? menuItem('pencil', 'Rename device…', () => renameRemote(p.remoteId)) : null,
     readDoc('CLAUDE.md'),
     readDoc('README.md'),
     !p.chat && top && top.path !== p.path ? menuItem('arrowUp', 'Move to top', () => moveProject(p.path, top.path, false)) : null,
@@ -2103,17 +2213,27 @@ function sessionMenu(p, s, t, e, row = null) {
   const g = t && groupOf(t.id);
   openMenu(key, [
     menuItem('arrowRight', t ? 'Show' : 'Open', () => openSessionRow(p, s)),
-    room ? menuItem('columns', 'Open beside', () => besideRow(t, () => openSession(p, { resumeId: s.id, beside: true }))) : null,
+    p.remoteId && (t?.runtimeId || s.runtimeId) ? menuItem('power', 'End remote session…', async () => {
+      if (!(await confirmDialog({ title: 'End remote session?', message: 'This stops the remote process. Closing a tab instead keeps it running.', okLabel: 'End session', danger: true }))) return;
+      if (t) { if (await endRemote(t)) await closeTab(t.id); }
+      else { const r = await api.remoteRuntime(p.path, s.runtimeId, 'end'); if (!r.ok) remoteNotice(r.error); }
+      pollSessions();
+    }, true) : null,
+    room ? menuItem('columns', 'Open beside', () => besideRow(t, () => openSession(p, { ...sessionOptions(s), beside: true }))) : null,
     h('div', { class: 'menu-sep' }),
-    menuItem('fork', 'Fork session', () => openSession(p, { resumeId: s.id, fork: true })),
-    room ? menuItem('fork', 'Fork beside', () => openSession(p, { resumeId: s.id, fork: true, beside: true })) : null,
+    s.kind !== 'shell' && (!s.runtimeId || s.transcriptId) ? menuItem('fork', 'Fork session', () => openSession(p, { resumeId: s.id, fork: true })) : null,
+    room && s.kind !== 'shell' && (!s.runtimeId || s.transcriptId) ? menuItem('fork', 'Fork beside', () => openSession(p, { resumeId: s.id, fork: true, beside: true })) : null,
     g ? h('div', { class: 'menu-sep' }) : null,
     g ? menuItem('minus', 'Take out of split', () => minimizePane(t.id)) : null,
     g ? menuItem('x', 'Unsplit', () => unsplit(g)) : null,
     h('div', { class: 'menu-sep' }),
-    t?.skipPerms
+    s.kind === 'shell' || (s.runtimeId && !s.transcriptId) ? null : t?.skipPerms
       ? menuItem('redo', 'Relaunch with permissions', () => relaunchTab(t, false))
-      : menuItem('zap', 'Relaunch, skip permissions', () => (t ? relaunchTab(t, true) : openSession(p, { resumeId: s.id, skipPerms: true }))),
+      : menuItem('zap', 'Relaunch, skip permissions', async () => {
+        if (t) return relaunchTab(t, true);
+        if (p.remoteId && s.runtimeId) { const opened = await openSession(p, sessionOptions(s)); if (opened.status === 'running') return relaunchTab(opened, true); }
+        else return openSession(p, { resumeId: s.id, skipPerms: true });
+      }),
   ], x, y, flipY);
   row?.classList.add('menu-open'); // keeps its … visible while the menu is open
 }
@@ -2232,9 +2352,9 @@ function renderFoot(force = false) {
   // Each stat is icon + value. The plan's current session limit gets the ring; weekly lives in the tooltip/popover.
   const sessPct = sess ? limitPct(sess) : null;
   const usageTip = sess
-    ? [`Session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`,
+    ? [`Local account · session usage ${sessPct}% (${fmtReset(sess)})`, week && `Weekly ${limitPct(week)}%`,
       usage.stale && `Last updated ${Math.round((Date.now() - usage.fetchedAt) / 60000)} min ago`].filter(Boolean).join('\n')
-    : usage && !usage.ok ? `Plan usage unavailable: ${usage.error}` : 'Plan usage';
+    : usage && !usage.ok ? `Local account usage unavailable: ${usage.error}` : 'Local account usage';
   $('#side-foot').replaceChildren(
     h('button', {
       class: `btn ghost icon sm${settingsOpen ? ' on' : ''}`, title: tip('Settings', 'settings'), onclick: () => toggleSettings(),
@@ -2382,7 +2502,7 @@ function homeActivity() {
 function lastConversation() {
   let best = null;
   for (const p of projects) {
-    const s = (sessionsBy[p.path] || [])[0];
+    const s = (sessionsBy[p.path] || []).find((s) => s.kind !== 'shell');
     if (s && (!best || s.last > best.s.last)) best = { p, s };
   }
   return best;
@@ -2399,7 +2519,7 @@ function homeResume(last) {
       h('div', { class: 'hr-title', title: s.title }, s.title),
       h('div', { class: 'hr-sub' }, projName(p), branch ? h('span', {}, ` · ${branch}`) : null)),
     h('button', { class: 'btn outline', 'data-hk': 'resume', onclick: () => openSessionRow(p, s) },
-      tabOfSession(s.id) ? 'Open' : 'Continue', ico('arrowRight')));
+      tabOfSession(s.id, p.path) ? 'Open' : 'Continue', ico('arrowRight')));
 }
 
 /** Branch on the first line, changes (or clean) and ahead/behind on the second; one line without a repo. */
@@ -2428,7 +2548,7 @@ function homeProjectList() {
       h('span', { class: 'proj-ico' }, ico(p.chat || p.none ? 'chat' : open ? 'terminal' : 'folder')),
       h('span', { class: 'proj-main' },
         h('span', { class: 'p-name' }, p.none ? 'No project' : projName(p)),
-        h('span', { class: 'p-path' }, p.none ? 'Chat outside your projects' : h('bdi', {}, p.path))),
+        h('span', { class: 'p-path' }, p.none ? 'Chat outside your projects' : h('bdi', {}, displayPath(p)))),
       h('span', { class: 'proj-git' }, p.chat || p.none ? h('span', { class: 'g muted' }, 'No project needed') : homeGit(git[p.path])),
       h('span', { class: 'proj-go' }, ico('arrowRight')));
   };
@@ -2468,7 +2588,7 @@ function renderWelcome() {
   const open = [...new Set([...tabs.values()].map((t) => t.project.path))];
   // Rebuilt only when what it shows changed (git and session polls call it every few seconds)
   const key = JSON.stringify([projects, git, stats, usage, open, homeQuery, homeAll, userName, Math.floor(Date.now() / 60000),
-    last && [last.p.path, last.s.id, last.s.title, last.s.last, !!tabOfSession(last.s.id)], hints.map(([id]) => keyText(id))]);
+    last && [last.p.path, last.s.id, last.s.title, last.s.last, !!tabOfSession(last.s.id, last.p.path)], hints.map(([id]) => keyText(id))]);
   if (key === lastWelcomeKey) return;
   lastWelcomeKey = key;
   // Keyboard focus (and the search caret) survive the rebuild
@@ -2808,7 +2928,7 @@ function renderStatus() {
       if (info.ahead) left.append(h('span', { class: 'stat info' }, `↑${info.ahead}`));
       if (info.behind) left.append(h('span', { class: 'stat info' }, `↓${info.behind}`));
     }
-    left.append(h('span', { class: 'path' }, tab.project.path));
+    left.append(h('span', { class: 'path' }, displayPath(tab.project)));
   }
   renderDiffBtn();
   const running = [...tabs.values()].filter((t) => t.status === 'running').length;
@@ -2927,6 +3047,15 @@ let lastRsideKey = '';
 function renderRside(force = false) {
   syncDocs();
   const proj = currentProject();
+  if (proj?.remoteId) {
+    const key = `remote:${proj.path}`;
+    if (!force && lastRsideKey === key) return;
+    lastRsideKey = key;
+    $('#rside-panel').replaceChildren(h('div', { class: 'rnote remote-summary' },
+      h('strong', {}, remoteName(proj)), h('p', {}, proj.remotePath),
+      h('p', {}, 'Session history and Git changes are available. File viewers, uploads, server discovery, MCP and subagent details are not available remotely yet.')));
+    return;
+  }
   const ctx = contextInfo();
   const mcp = mcpBy.get(proj?.path || GLOBAL);
   const tab = activeTab();
@@ -3015,6 +3144,7 @@ function renderRside(force = false) {
 const rsideBusy = new Set();
 // Without a project (home screen) main lists the user-level ones: `claude mcp list` in the home folder, ~/.claude/agents.
 async function pollMcp() {
+  if (currentProject()?.remoteId) return;
   const key = currentProject()?.path || GLOBAL;
   if (!rsideOnScreen() || document.hidden || rsideBusy.has(key)) return;
   rsideBusy.add(key);
@@ -3027,6 +3157,7 @@ async function pollMcp() {
 }
 
 async function pollDefinedAgents() {
+  if (currentProject()?.remoteId) return;
   const key = currentProject()?.path || GLOBAL;
   if (!rsideOnScreen() || document.hidden) return;
   const next = await api.definedAgents(key || null);
@@ -3096,6 +3227,7 @@ async function pollInfo() {
 const imagesBusy = new Set();
 async function pollImages() {
   const tab = activeTab();
+  if (tab?.project.remoteId) return;
   if (!tab || tab.kind !== 'claude' || !tab.sessionId || !rsideOnScreen() || ui.collapsed.includes('images') || document.hidden || imagesBusy.has(tab.id)) return;
   imagesBusy.add(tab.id);
   try {
@@ -3554,6 +3686,7 @@ function renderPill(p, d) {
 const docsBusy = new Set();
 async function pollDocs() {
   const tab = activeTab();
+  if (tab?.project.remoteId) return;
   if (!tab || !rsideOnScreen() || ui.collapsed.includes('docs') || document.hidden || docsBusy.has(tab.id)) return;
   docsBusy.add(tab.id);
   try {
@@ -3673,18 +3806,18 @@ function renderDiffBtn(force = false) {
  * After every git status poll (and when the tab or the sidebar shows): the whole diff while the Changes tab is on
  * screen, else just the counts for the button, and nothing for a clean project. One at a time; one asked for meanwhile runs after.
  */
-let diffBusy = false;
-let diffQueued = false;
+const diffBusy = new Set();
+const diffQueued = new Set();
 async function pollDiff() {
   const p = docProject();
   if (!p || p.chat || document.hidden) return;
-  if (diffBusy) { diffQueued = true; return; }
+  if (diffBusy.has(p.path)) { diffQueued.add(p.path); return; }
   const full = diffShown();
   if (!full && !git[p.path]?.dirty) { // clean, or not a repo
     if (statBy.delete(p.path)) renderDiffBtn();
     return;
   }
-  diffBusy = true;
+  diffBusy.add(p.path);
   try {
     if (full) {
       const r = await api.gitDiff(p.path, diffBy.get(p.path)?.id || null);
@@ -3701,8 +3834,8 @@ async function pollDiff() {
     }
     renderDiffBtn();
   } catch { /* the next poll tries again */ } finally {
-    diffBusy = false;
-    if (diffQueued) { diffQueued = false; pollDiff(); }
+    diffBusy.delete(p.path);
+    if (diffQueued.delete(p.path) && docProject()?.path === p.path) pollDiff();
   }
 }
 
@@ -3847,7 +3980,7 @@ function diffFile(p, root, f) {
   const dir = f.path.slice(0, f.path.length - name.length);
   const note = diffNote(f);
   // Nothing to open for a deleted file or a folder, and a binary one is never started from here (a changed .exe would run).
-  const openBtn = f.status !== 'D' && !f.binary && !f.dir
+  const openBtn = !p.remoteId && f.status !== 'D' && !f.binary && !f.dir
     ? h('button', { class: 'btn ghost icon sm', title: 'Open in VS Code', onclick: (e) => { e.stopPropagation(); api.openFile(diffAbs(root, f.path), firstChange(f)); } }, ico('code'))
     : h('span', { class: 'diff-gap' }); // the notes and counts stay aligned
   const nameEl = h('span', { class: 'diff-name' },
@@ -3933,7 +4066,7 @@ function diffLines(root, f) {
   box.append(...rows);
   box.addEventListener('click', (e) => {
     const row = e.target.closest('.ln') && e.target.closest('.dl[data-n]');
-    if (row) api.openFile(diffAbs(root, f.path), +row.dataset.n);
+    if (row && !docProject()?.remoteId) api.openFile(diffAbs(root, f.path), +row.dataset.n);
   });
   return box;
 }
@@ -3950,6 +4083,104 @@ function renderAll() {
 // --------------------------------------------------------------- actions ----
 
 async function addProjects() {
+  showProjectPicker();
+}
+
+function showProjectPicker(selected = '') {
+  const device = h('select', { id: 'project-device', 'aria-label': 'Device' },
+    h('option', { value: '' }, 'This computer'),
+    remotes.map((d) => h('option', { value: d.id }, d.name)), h('option', { value: ':add' }, '+ Add remote…'));
+  device.value = selected;
+  const content = h('div', { class: 'remote-folders' });
+  const note = h('div', { class: 'rnote', role: 'status' });
+  const name = h('input', { id: 'project-name', placeholder: 'Project name (optional)', 'aria-label': 'Project name' });
+  const folder = h('input', { id: 'remote-folder', placeholder: '/home/…', 'aria-label': 'Remote folder', spellcheck: 'false' });
+  const add = h('button', { class: 'btn primary', disabled: true }, 'Add project');
+  const body = h('div', { class: 'ag-body remote-form' }, h('label', { for: 'project-device' }, 'Source folders'), device, content, note);
+  const dlg = openModal('Add project', null, body);
+  let generation = 0;
+  async function browse(folderPath) {
+    const g = ++generation; const id = device.value;
+    add.disabled = true; note.textContent = 'Connecting…';
+    const result = await api.remoteDirs(id, folderPath);
+    if (!dlg.isOpen() || generation !== g || device.value !== id) return;
+    if (!result.ok) { note.textContent = result.error; return; }
+    folder.value = result.path; add.disabled = false; note.textContent = '';
+    const entries = body.querySelector('.remote-entries');
+    entries.replaceChildren(
+      h('button', { class: 'remote-entry', onclick: () => browse(result.parent) }, ico('arrowUp'), '..'),
+      ...result.entries.map((n) => h('button', { class: 'remote-entry', onclick: () => browse(`${result.path.replace(/\/$/, '')}/${n}`) }, ico('folder'), n)));
+  }
+  function changed() {
+    generation++;
+    if (device.value === ':add') { closeModal?.(); showRemoteSetup(); return; }
+    note.textContent = '';
+    if (!device.value) {
+      content.replaceChildren(h('button', { class: 'btn outline', onclick: () => { closeModal?.(); addLocalProjects(); } }, ico('folder'), 'Choose a folder on this computer…'));
+      return;
+    }
+    const d = remotes.find((d) => d.id === device.value);
+    const go = h('button', { class: 'btn outline sm', onclick: () => browse(folder.value) }, 'Go');
+    folder.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); browse(folder.value); } };
+    add.onclick = async () => {
+      add.disabled = true;
+      const result = await api.addRemoteProject(device.value, folder.value, name.value.trim());
+      if (!dlg.isOpen()) return;
+      if (!result.ok) { note.textContent = result.error; add.disabled = false; return; }
+      projects = result.projects; closeModal?.();
+      expanded.add(result.added[0]); saveExpanded(); renderAll(); pollGit(); pollSessions();
+    };
+    content.replaceChildren(name, h('div', { class: 'remote-path-row' }, folder, go),
+      h('div', { class: 'remote-entries', 'aria-label': 'Folders' }),
+      h('div', { class: 'remote-actions' },
+        h('button', { class: 'btn ghost sm', onclick: () => renameRemote(d.id) }, 'Rename device'),
+        h('button', { class: 'btn ghost sm', onclick: async () => {
+          const r = await api.remoteDevice(d.id, 'remove');
+          if (!dlg.isOpen()) return;
+          if (!r.ok) note.textContent = r.error; else { remotes = r.remotes; showProjectPicker(); }
+        } }, 'Remove device'), add));
+    browse(d.home);
+  }
+  device.onchange = changed;
+  changed(); device.focus();
+}
+
+function showRemoteSetup() {
+  const target = h('input', { id: 'remote-target', placeholder: 'aalish@g5-server', 'aria-label': 'SSH target', autocomplete: 'off', spellcheck: 'false' });
+  const name = h('input', { id: 'remote-name', placeholder: 'G5 server', 'aria-label': 'Display name' });
+  const port = h('input', { id: 'remote-port', type: 'number', min: '1', max: '65535', placeholder: 'From SSH config (usually 22)', 'aria-label': 'SSH port' });
+  const note = h('div', { class: 'rnote', role: 'status' }, 'Uses your existing SSH keys and config. Requires Node.js 20+ and tmux on Ubuntu. Setup installs a small Stanza helper under ~/.local/share/stanza/remote.');
+  const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Connect');
+  const form = h('form', { class: 'ag-body remote-form' },
+    h('label', { for: 'remote-target' }, 'SSH target'), target,
+    h('label', { for: 'remote-name' }, 'Display name'), name,
+    h('label', { for: 'remote-port' }, 'Port (optional)'), port, note,
+    h('div', { class: 'remote-actions' }, h('button', { class: 'btn outline', type: 'button', onclick: () => showProjectPicker() }, 'Back'), submit));
+  const dlg = openModal('Add remote', null, form);
+  form.onsubmit = async (e) => {
+    e.preventDefault(); submit.disabled = true; note.textContent = 'Connecting…';
+    const result = await api.addRemote({ target: target.value.trim(), name: name.value.trim(), port: port.value ? Number(port.value) : undefined });
+    if (!dlg.isOpen()) return;
+    submit.disabled = false;
+    if (!result.ok) { note.textContent = `${result.error}\nCheck that ssh ${target.value.trim()} works in your terminal first. New host keys or locked keys must be handled there.`; return; }
+    remotes = result.remotes;
+    showProjectPicker(result.device.id);
+  };
+  target.focus();
+}
+
+function renameRemote(id) {
+  const device = remotes.find((d) => d.id === id);
+  if (!device) return;
+  const input = h('input', { value: device.name, 'aria-label': 'Device name' });
+  const note = h('div', { class: 'rnote', role: 'status' });
+  const form = h('form', { class: 'ag-body remote-form' }, input, note, h('button', { class: 'btn primary', type: 'submit' }, 'Save'));
+  const dlg = openModal('Rename device', null, form);
+  form.onsubmit = async (e) => { e.preventDefault(); const r = await api.remoteDevice(id, 'rename', input.value); if (!dlg.isOpen()) return; if (!r.ok) note.textContent = r.error; else { remotes = r.remotes; closeModal?.(); renderAll(); } };
+  input.focus(); input.select();
+}
+
+async function addLocalProjects() {
   const { projects: list, added } = await api.addProjects();
   projects = list;
   renderAll();
@@ -4265,7 +4496,7 @@ async function onCloseRequest() {
   closeAsked = true;
   try {
     await flushDocEdit();
-    const working = [...tabs.values()].filter(isWorking);
+    const working = [...tabs.values()].filter((t) => !t.project.remoteId && isWorking(t));
 
     // Dev servers started from our tabs die with the app. Reuse the last scan unless it is stale.
     let scan = ports;
@@ -4474,21 +4705,69 @@ function projectAction(fn) {
 // Visible but not focused (the user works in another app): the active project's git status slows down.
 const idle = () => !document.hasFocus();
 
+const remoteGitBusy = new Set();
+const remoteSessionsBusy = new Set();
+function remoteProjects(all, sessions = false) {
+  if (document.hidden) return [];
+  const shown = new Set([currentProject()?.path, ...expanded, ...[...tabs.values()].map((t) => t.project.path)]);
+  return [...projects, ...orphanProjects()].filter((p) => p.remoteId && (all || (sessions ? shown.has(p.path) : currentProject()?.path === p.path)));
+}
+function pollRemoteGit(all) {
+  for (const p of remoteProjects(all)) {
+    if (remoteGitBusy.has(p.path)) continue;
+    remoteGitBusy.add(p.path);
+    api.gitStatus([p.path]).then((r) => {
+      if (r[p.path] === undefined) return;
+      git = { ...git, ...r }; renderSidebar(); renderStatus(); renderWelcome();
+      if (docProject()?.path === p.path) pollDiff();
+    }).catch(() => {}).finally(() => remoteGitBusy.delete(p.path));
+  }
+}
+function pollRemoteSessions(all) {
+  for (const p of remoteProjects(all, true)) {
+    if (remoteSessionsBusy.has(p.path)) continue;
+    remoteSessionsBusy.add(p.path);
+    const attached = tabsOf(p.path).filter((t) => t.status === 'running');
+    const bindings = new Map(attached.map((t) => [t.id, { handle: t.runtimeId, generation: t.remoteGeneration || 0 }]));
+    Promise.all([api.listSessions([p.path]), api.liveSessions(attached.filter((t) => t.kind === 'claude').map((t) => t.id)),
+      ...attached.map(async (t) => {
+        const handle = t.runtimeId;
+        if (!handle) return;
+        const r = await api.remoteRuntime(p.path, handle);
+        if (!tabs.has(t.id) || t.runtimeId !== handle || (t.remoteGeneration || 0) !== bindings.get(t.id).generation || !r.ok) return;
+        if (!r.runtime?.alive) {
+          t.remoteEnded = true; t.status = 'exited'; api.ptyKill(t.id);
+          showOverlay(t, 'Remote session ended.');
+        }
+      })]).then(([r, live]) => {
+      if (r[p.path] !== undefined) { sessionsBy = { ...sessionsBy, ...r }; sessionsVer++; }
+      for (const [id, b] of bindings) {
+        const t = tabs.get(id);
+        if (!t || t.runtimeId !== b.handle || (t.remoteGeneration || 0) !== b.generation) continue;
+        if (live[id]) liveBy[id] = live[id]; else delete liveBy[id];
+      }
+      assignSessions();
+      renderSidebar(); renderFoot(); renderStatus(); renderWelcome(); renderInfo();
+    }).catch(() => {}).finally(() => remoteSessionsBusy.delete(p.path));
+  }
+}
+
 // The active project every 4 s (8 s while unfocused), all of them every 20 s (and on focus, project changes).
 // A full poll asked for while a partial one runs is queued, not dropped.
 let gitBusy = false;
 let gitQueued = false;
 let gitTick = 0;
 async function pollGit(all = true) {
-  const list = realProjects(); // the chat folder is no repo worth watching
+  pollRemoteGit(all);
+  const list = realProjects().filter((p) => !p.remoteId); // remotes never hold local polls busy
   if (gitBusy && all) gitQueued = true;
   if (gitBusy || document.hidden || !list.length) return;
   const cur = all ? null : currentProject();
-  if (!all && (!cur || cur.chat)) return;
+  if (!all && (!cur || cur.chat || cur.remoteId)) return;
   gitBusy = true;
   try {
     const res = await api.gitStatus(all ? list.map((p) => p.path) : [cur.path]);
-    const next = all ? res : { ...git, ...res };
+    const next = { ...git, ...res };
     if (JSON.stringify(next) !== JSON.stringify(git)) {
       git = next;
       renderSidebar();
@@ -4516,17 +4795,18 @@ function soonSessions(ms = 400) {
 }
 
 async function pollSessions(all = true) {
+  pollRemoteSessions(all);
   const shown = all ? null : new Set([...[...tabs.values()].map((t) => t.project.path), ...expanded, currentProject()?.path]);
   // removed projects with open tabs too: their rows need titles, fresh tabs their transcript (assignSessions)
-  const paths = [...projects, ...orphanProjects()].map((p) => p.path).filter((p) => all || shown.has(p));
+  const paths = [...projects, ...orphanProjects()].filter((p) => !p.remoteId).map((p) => p.path).filter((p) => all || shown.has(p));
   if (sessionsBusy && all) sessionsQueued = true;
   if (sessionsBusy || document.hidden || !paths.length) return;
   sessionsBusy = true;
   try {
-    const claudeIds = [...tabs.values()].filter((t) => t.kind === 'claude' && t.status === 'running').map((t) => t.id);
+    const claudeIds = [...tabs.values()].filter((t) => !t.project.remoteId && t.kind === 'claude' && t.status === 'running').map((t) => t.id);
     const [res, live] = await Promise.all([api.listSessions(paths), api.liveSessions(claudeIds)]);
-    liveBy = live;
-    const next = all ? res : { ...sessionsBy, ...res };
+    liveBy = { ...liveBy, ...live };
+    const next = { ...sessionsBy, ...res };
     if (JSON.stringify(next) !== JSON.stringify(sessionsBy)) { sessionsBy = next; sessionsVer++; }
     assignSessions();
     renderSidebar();
@@ -4605,6 +4885,7 @@ async function pollPorts() {
 // ------------------------------------------------------------------ init ----
 
 function wireGlobalEvents() {
+  api.onRemoteStatus((id, status) => { remoteStatuses[id] = status; renderSidebar(true); });
   api.onPtyData((id, data) => {
     const tab = tabs.get(id);
     if (!tab) return;
@@ -4621,6 +4902,8 @@ function wireGlobalEvents() {
     const tab = tabs.get(id);
     if (!tab) return;
     if (tab.relaunch) { tab.relaunch(); return; } // relaunchTab ended it: no "Session ended" overlay
+    if (tab.project.remoteId && tab.remoteEnding) { tab.status = 'exited'; return; }
+    if (tab.project.remoteId && !tab.remoteEnded) { remoteDisconnected(tab); return; }
     tab.status = 'exited';
     tab.exitCode = code;
     tab.busy = false;
@@ -4708,9 +4991,9 @@ function wireGlobalEvents() {
   $('#search-clear').addEventListener('click', (e) => { e.preventDefault(); clearSearch(); search.focus(); });
 
   $('#new-tab').addEventListener('click', (e) => newSessionMenu(e.currentTarget));
-  $('#open-code').addEventListener('click', () => projectAction((p) => api.openInCode(p.path)));
+  $('#open-code').addEventListener('click', () => projectAction((p) => p.remoteId ? remoteNotice('Remote editor integration is not available yet. Use Copy remote path from the project menu.') : api.openInCode(p.path)));
   $('#open-shell').addEventListener('click', () => projectAction((p) => openSession(p, { kind: 'shell' })));
-  $('#open-folder').addEventListener('click', () => projectAction((p) => api.openFolder(p.path)));
+  $('#open-folder').addEventListener('click', () => projectAction((p) => p.remoteId ? api.writeClipboard(p.remotePath) : api.openFolder(p.path)));
   $('#toggle-sidebar').addEventListener('click', () => setSidebar(!ui.sidebar));
   $('#home').addEventListener('click', goHome);
   $('#toggle-rside').addEventListener('click', () => setServers(!rsideShown()));
@@ -4752,6 +5035,8 @@ async function init() {
 
   const state = await api.getState();
   projects = state.projects;
+  remotes = state.remotes || [];
+  remoteStatuses = state.remoteStatuses || {};
   chatInfo = state.chat;
   userName = state.user || '';
   ui = state.ui;
