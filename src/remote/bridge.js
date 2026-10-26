@@ -245,7 +245,7 @@ const operations = {
   dirs: async (p) => { const cwd = await dir(p.path || home); const entries = await fs.promises.readdir(cwd, { withFileTypes: true });
     return { path: cwd, parent: path.dirname(cwd), entries: entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort().slice(0, 1000) }; },
   github: (p) => githubRepositories(p.owner),
-  clone: (p) => cloneRepository(p),
+  clone: (p, progress) => cloneRepository(p, progress),
   mkdir: async (p) => {
     const parent = await dir(p.path);
     const name = folderName(p.name);
@@ -267,9 +267,12 @@ input.on('line', (line) => {
   try { m = JSON.parse(line); } catch { return; }
   if (!Number.isSafeInteger(m.id) || !Object.hasOwn(operations, m.op)) return;
   const key = ['prepare', 'terminate'].includes(m.op) ? m.params?.client : null;
-  const task = (key ? locks.get(key) || Promise.resolve() : Promise.resolve()).catch(() => {}).then(() => operations[m.op](m.params || {}));
+  const progress = (value) => send({ id: m.id, progress: value });
+  // Heartbeats only verify this helper's connection; Git output controls the clone's idle timeout.
+  const heartbeat = m.op === 'clone' ? setInterval(() => progress(null), 10000) : null;
+  const task = (key ? locks.get(key) || Promise.resolve() : Promise.resolve()).catch(() => {}).then(() => operations[m.op](m.params || {}, progress));
   tasks.add(task);
-  task.finally(() => tasks.delete(task)).catch(() => {});
+  task.finally(() => { clearInterval(heartbeat); tasks.delete(task); }).catch(() => {});
   if (key) { locks.set(key, task); task.finally(() => { if (locks.get(key) === task) locks.delete(key); }).catch(() => {}); }
   task.then((result) => send({ id: m.id, result }), (err) => send({ id: m.id, error: err.message }));
 });

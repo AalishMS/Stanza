@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   pickCloneDestination: () => ipcRenderer.invoke('projects:destination'),
   githubRepositories: (id, owner) => ipcRenderer.invoke('projects:github', id, owner),
   cloneProject: (id, value) => ipcRenderer.invoke('projects:clone', id, value),
+  onCloneProgress: (cb) => on('projects:clone-progress', cb),
   chatProject: () => ipcRenderer.invoke('projects:chat'),
   pickChatDir: () => ipcRenderer.invoke('chat:pickDir'),
   resetChatDir: () => ipcRenderer.invoke('chat:resetDir'),

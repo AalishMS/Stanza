@@ -160,6 +160,11 @@ site/            the product page (static, open index.html or serve the folder; 
     Clone destination browsers share Add project's New folder toolbar and inline Create/Cancel recipe, using
     `remoteMkdir` with the last browsed directory. Enter creates the child without submitting the clone form;
     success browses/selects it. Test creation, Cancel, invalid/duplicate names and focus in both clone dialogs on Mac.
+    Clone progress streams Git's `--progress` stderr through per-request helper messages and IPC, coalesced at 100 ms.
+    Clone commands stop after five minutes without output, not after a fixed total duration. Helper heartbeats every
+    10 s keep the clone RPC alive (35 s contact deadline); they never reset Git's inactivity deadline. Bounded output
+    tails avoid buffering the full transfer log. Same code on Mac: test a clone longer than two minutes, stage/percent
+    updates, stalled connection cleanup, all themes and Reduce motion; owned process groups still stop on quit.
   - Sessions: `claude` is spawned directly, shell tabs run `$SHELL -l`. Both (and `claude mcp list`) wait for
     `shellEnvReady`: the login shell's PATH, since Finder launches get a bare PATH. Capped at 5 s because rc files can
     block (stdin closed, own process group, SIGKILLed on timeout); common folders (Homebrew, `~/.local/bin`) are appended.

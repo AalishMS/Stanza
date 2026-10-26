@@ -143,7 +143,9 @@ and Browse folder list, with the same New folder toolbar and inline Create/Cance
 Creating a child folder selects it as the clone destination. GitHub has two source sections: **Your Repositories:** (search and a flat list capped at
 192 px, selected row on `--accent` with a checkmark) and **Any Other Repository Link:** (one URL input below a
 `--border` divider). Selecting a row clears the link; entering a link clears the selection. There is no owner/Load
-control or duplicate source field. Progress and errors stay in plain status text; controls disable while cloning.
+control or duplicate source field. While cloning, a compact 14 px spinner and 12 px muted line show Git's current
+stage and transfer details; a 3 px `--primary` meter appears when that stage reports a percentage. Reduced motion
+stops the spinner. Errors stay in plain status text; controls disable while cloning.
 Existing folders are never overwritten.
 Inputs follow the Input recipe; all
 surfaces use the four existing palettes. The close button stays at the dialog's right edge.

@@ -1055,6 +1055,14 @@ body.settings-open #settings { display: block; }
 .clone-empty { padding: 8px; }
 .clone-section .rnote:empty, .clone-section button[hidden] { display: none; }
 .clone-section > .btn { align-self: flex-start; }
+.clone-progress { display: flex; flex-direction: column; gap: 8px; color: var(--muted-foreground); font-size: 12px; }
+.clone-progress[hidden], .clone-progress-bar[hidden] { display: none; }
+.clone-progress-line { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.clone-progress-line .ico { flex: 0 0 14px; width: 14px; height: 14px; animation: spin 1s linear infinite; }
+.clone-progress-bar { appearance: none; width: 100%; height: 3px; border: 0; border-radius: var(--radius-sm); overflow: hidden; }
+.clone-progress-bar::-webkit-progress-bar { background: var(--muted); }
+.clone-progress-bar::-webkit-progress-value { background: var(--primary); }
+@media (prefers-reduced-motion: reduce) { .clone-progress-line .ico { animation: none; } }
 .remote-browser[hidden] { display: none; }
 .remote-path-row, .remote-actions { display: flex; gap: 8px; align-items: center; }
 .remote-actions { justify-content: flex-end; flex-wrap: wrap; }

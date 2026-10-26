@@ -33,4 +33,16 @@ function githubOwner(value) {
   return owner;
 }
 
-module.exports = { repositorySource, cloneFolder, githubOwner };
+// Git rewrites progress with carriage returns, including when --progress is piped.
+function cloneProgress(output) {
+  const lines = String(output).replace(new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g'), '').split(/[\r\n]/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const match = /^(?:remote:\s*)?(Enumerating objects|Counting objects|Compressing objects|Receiving objects|Resolving deltas|Updating files|Checking out files|Filtering content|Downloading LFS objects):\s*(.*)$/i.exec(lines[i].trim());
+    if (!match) continue;
+    const percent = /^(\d{1,3})%/.exec(match[2]);
+    return { text: `${match[1]}: ${match[2]}`.slice(0, 240), percent: percent ? Math.min(100, Number(percent[1])) : null };
+  }
+  return null;
+}
+
+module.exports = { repositorySource, cloneFolder, githubOwner, cloneProgress };

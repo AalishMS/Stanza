@@ -256,10 +256,10 @@ async function remoteCall(key, op, params = {}) {
   const { project, device } = remoteProject(key);
   return deviceCall(device, op, { ...params, cwd: project.remotePath });
 }
-async function deviceCall(device, op, params = {}) {
+async function deviceCall(device, op, params = {}, onProgress = null) {
   const info = await checkRemoteDevice(device);
   if (op === 'prepare' && params.kind === 'claude' && !info.claude) throw Error('Claude Code is missing on the server. Open a remote Shell to install it.');
-  return remoteManager().call(device, op, params);
+  return remoteManager().call(device, op, params, onProgress);
 }
 async function checkRemoteDevice(device, force = false) {
   try {
@@ -2138,17 +2138,20 @@ function registerIpc() {
   });
   ipcMain.handle('projects:clone', async (_e, id, value) => {
     try {
+      if (!UUID.test(value?.requestId)) throw Error('Invalid clone request');
+      const progress = (data) => { if (!_e.sender.isDestroyed()) _e.sender.send('projects:clone-progress', value.requestId, data); };
+      progress({ text: id ? 'Connecting to server…' : 'Preparing clone…', percent: null });
       let key;
       if (id) {
         const device = state.remotes.find((d) => d.id === id);
         if (!device) throw Error('Remote device not found');
-        const result = await deviceCall(device, 'clone', value);
+        const result = await deviceCall(device, 'clone', value, progress);
         key = remoteKey(id, result.path);
         if (!state.projects.some((p) => p.path === key)) state.projects.push({ path: key, remoteId: id, remotePath: result.path, name: path.posix.basename(result.path) });
         saveState();
       } else {
         await shellEnvReady; // macOS: same login PATH as local sessions
-        key = addProject((await cloneRepository(value)).path);
+        key = addProject((await cloneRepository(value, progress)).path);
         if (!key) throw Error('The cloned folder is no longer available.');
       }
       return { ok: true, projects: state.projects, added: [key] };

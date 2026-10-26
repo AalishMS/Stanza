@@ -66,6 +66,11 @@ class Remote {
           }
           const req = c.pending.get(msg.id);
           if (!req) continue;
+          if (Object.hasOwn(msg, 'progress') && req.clone) {
+            req.reset();
+            if (msg.progress) req.progress?.(msg.progress);
+            continue;
+          }
           c.pending.delete(msg.id); clearTimeout(req.timer);
           if (msg.error) req.reject(Error(msg.error)); else req.resolve(msg.result);
         }
@@ -74,14 +79,24 @@ class Remote {
     });
     return c.ready;
   }
-  async call(device, op, params = {}) {
+  async call(device, op, params = {}, onProgress = null) {
     const c = await this.connect(device);
     if (this.connections.get(device.id) !== c || c.failed) throw Error('Connection changed; retry');
     if (op !== 'hello' && device.home && (!c.info || c.info.home !== device.home || c.info.user !== device.user || c.info.hostname !== device.hostname)) throw Error('Remote identity is unverified or changed. Reconnect before retrying.');
     return new Promise((resolve, reject) => {
       const id = ++c.next;
-      const timer = setTimeout(() => { c.pending.delete(id); reject(Error(`Remote ${op} timed out`)); }, op === 'clone' ? 130000 : 25000);
-      c.pending.set(id, { resolve, reject, timer });
+      const req = { resolve, reject, timer: null, clone: op === 'clone', progress: onProgress };
+      req.reset = () => {
+        clearTimeout(req.timer);
+        req.timer = setTimeout(() => {
+          c.pending.delete(id);
+          const message = req.clone ? 'Lost contact with the server while cloning. Reconnect and check the destination folder before retrying.' : `Remote ${op} timed out`;
+          reject(Error(message));
+          // Closing the helper triggers its drain/clone cleanup and prevents a stale connection being reused.
+          if (req.clone && this.connections.get(device.id) === c) this.disconnect(device, message);
+        }, req.clone ? 35000 : 25000);
+      };
+      req.reset(); c.pending.set(id, req);
       c.child.stdin.write(JSON.stringify({ id, op, params: { ...params, client: this.client } }) + '\n');
     });
   }

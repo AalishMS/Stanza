@@ -4359,6 +4359,8 @@ function showProjectPicker(selected = '') {
   changed(); device.focus();
 }
 
+const cloneProgressViews = new Map();
+
 function showCloneProject(id, kind) {
   const github = kind === 'github';
   const device = remotes.find((d) => d.id === id);
@@ -4368,6 +4370,10 @@ function showCloneProject(id, kind) {
   const parent = h('input', { id: 'clone-parent', 'aria-label': 'Destination folder', placeholder: id ? '/home/…' : 'Choose a destination folder…',
     value: device?.home || '', readonly: !id, required: true, spellcheck: 'false' });
   const note = h('div', { class: 'rnote', role: 'status', 'aria-live': 'polite' });
+  const progressText = h('span', {}, 'Preparing clone…');
+  const progressBar = h('progress', { class: 'clone-progress-bar', max: '100', hidden: true, 'aria-label': 'Current Git stage progress' });
+  const progressView = h('div', { class: 'clone-progress', hidden: true, role: 'status', 'aria-live': 'polite' },
+    h('div', { class: 'clone-progress-line' }, ico('redo'), progressText), progressBar);
   const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Clone and add project');
   const back = h('button', { class: 'btn outline', type: 'button', onclick: () => showProjectPicker(id) }, 'Back');
   const folders = h('div', { class: 'remote-entries', 'aria-label': 'Destination folders' });
@@ -4476,7 +4482,7 @@ function showCloneProject(id, kind) {
   } else body.append(h('label', { for: 'clone-source' }, 'Git URL'), source);
   body.append(
     h('label', { for: 'clone-parent' }, 'Destination folder'), h('div', { class: 'remote-path-row' }, parent, choose), browser,
-    h('label', { for: 'clone-name' }, 'New folder name'), name, note,
+    h('label', { for: 'clone-name' }, 'New folder name'), name, progressView, note,
     h('div', { class: 'remote-actions' }, back, submit));
   body.onsubmit = async (e) => {
     e.preventDefault();
@@ -4485,10 +4491,20 @@ function showCloneProject(id, kind) {
     const controls = [...body.querySelectorAll('input, button')];
     const disabled = controls.map((c) => c.disabled);
     controls.forEach((c) => { c.disabled = true; });
-    note.textContent = 'Cloning repository…'; submit.textContent = 'Cloning…';
+    const requestId = crypto.randomUUID();
+    note.textContent = ''; submit.textContent = 'Cloning…';
+    progressText.textContent = id ? 'Connecting to server…' : 'Preparing clone…';
+    progressBar.hidden = true; progressView.hidden = false; body.setAttribute('aria-busy', 'true');
+    cloneProgressViews.set(requestId, (data) => {
+      if (!dlg.isOpen()) return;
+      progressText.textContent = data.text;
+      progressBar.hidden = !Number.isFinite(data.percent);
+      if (!progressBar.hidden) progressBar.value = data.percent;
+    });
     let result;
-    try { result = await api.cloneProject(id, { kind: github && selectedRepo ? 'github' : 'git', source: selectedRepo || source.value.trim(), parent: parent.value.trim(), name: name.value.trim() }); }
+    try { result = await api.cloneProject(id, { requestId, kind: github && selectedRepo ? 'github' : 'git', source: selectedRepo || source.value.trim(), parent: parent.value.trim(), name: name.value.trim() }); }
     catch (e) { result = { ok: false, error: e.message }; }
+    finally { cloneProgressViews.delete(requestId); progressView.hidden = true; body.removeAttribute('aria-busy'); }
     if (result.ok) {
       projects = result.projects;
       const key = result.added[0]; touchProject(key); expanded.add(key); saveExpanded();
@@ -5238,6 +5254,7 @@ async function pollPorts() {
 // ------------------------------------------------------------------ init ----
 
 function wireGlobalEvents() {
+  api.onCloneProgress((id, data) => cloneProgressViews.get(id)?.(data));
   api.onRemoteStatus((id, status) => {
     remoteStatuses[id] = status;
     if (status.status === 'disabled') for (const t of tabs.values()) if (t.project.remoteId === id && !t.remoteEnded) remoteDisconnected(t);

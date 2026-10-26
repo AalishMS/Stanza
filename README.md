@@ -84,6 +84,9 @@ URL under **Any Other Repository Link:**. Choose a destination folder and a new 
 On a server, **Browse** also offers **New folder** with inline Create/Cancel controls; creating a folder selects it as the destination.
 Git and, for GitHub, `gh` must be installed on the selected device. Existing folders are never overwritten.
 Authenticate Git/SSH in that device's terminal first; Stanza does not show hidden login prompts.
+Cloning shows a small spinner, Git's current stage and progress/transfer speed when available. Slow clones can run
+longer than two minutes; Stanza stops a clone after five minutes without output. A lost SSH connection reports a
+connection error; check the destination folder before retrying, since partial files may remain.
 
 Choose **Add project**, then select **Add remote…** in the device list. Enter an SSH alias or
 `user@hostname` (for example `aalish@g5-server`), connect, and choose a folder on the server.
@@ -166,6 +169,7 @@ Git URL and GitHub repository cloning use your login shell's PATH, including Hom
 from Finder. Test local and remote cloning, selecting a repository versus pasting a link, GitHub listing and login errors, destination selection and existing-folder
 errors in all four themes. In both clone dialogs, check Browse > New folder, Enter to create, Cancel, and duplicate/invalid-name errors.
 These Mac checks remain untested here.
+Also check progress on a clone lasting longer than two minutes, a stalled clone and Reduce motion.
 
 Remote Ubuntu projects use macOS's `/usr/bin/ssh` and the same Cmd shortcuts as local projects.
 Test from a Finder-launched build with your SSH agent/Keychain available: add and rename a device

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { repositorySource, cloneFolder, githubOwner } = require('../src/lib/repository');
+const { repositorySource, cloneFolder, githubOwner, cloneProgress } = require('../src/lib/repository');
 
 test('Git clone accepts HTTPS, SSH URLs and scp-style sources', () => {
   for (const url of ['https://github.com/owner/repo.git', 'ssh://git@host:2222/team/repo.git', 'git@github.com:owner/repo.git', 'host:team/repo', 'host:/srv/team/repo.git', 'git://host/repo']) {
@@ -33,4 +33,14 @@ test('clone destination is one portable child name on all three devices', () => 
   for (const name of [null, '', '.', '..', '../outside', '/absolute', 'C:\\folder', 'a/b', 'a\\b', 'repo.', 'con', 'NUL.txt', 'com1', 'LPT9.md', 'a\0b', 'a\nb', 'a?b', 'a'.repeat(121), 'न'.repeat(100)]) {
     assert.throws(() => cloneFolder(name), String(name));
   }
+});
+
+test('clone progress follows Git carriage-return stages and retains transfer details', () => {
+  assert.deepEqual(cloneProgress('remote: Counting objects: 100% (14/14), done.\nReceiving objects:  42% (42/100), 2.10 MiB | 1.20 MiB/s\rReceiving objects:  43% (43/100), 2.20 MiB | 1.30 MiB/s\r'),
+    { text: 'Receiving objects: 43% (43/100), 2.20 MiB | 1.30 MiB/s', percent: 43 });
+  assert.deepEqual(cloneProgress('Resolving deltas: 100% (12/12), done.\nUpdating files:  15% (3/20)\r'), { text: 'Updating files: 15% (3/20)', percent: 15 });
+  assert.deepEqual(cloneProgress('\x1b[2Kremote: Enumerating objects: 900, done.\r'), { text: 'Enumerating objects: 900, done.', percent: null });
+  assert.equal(cloneProgress("Cloning into '/tmp/repo'...\nfatal: Authentication failed"), null);
+  assert.equal(cloneProgress('unrecognized output'), null);
+  assert.equal(cloneProgress('Receiving objects: 999%').percent, 100);
 });
